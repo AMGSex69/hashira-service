@@ -8,11 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RotateCcw, X, Download, FileText } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Clock } from "lucide-react";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
+import { Clock } from "lucide-react";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -74,22 +70,15 @@ export default function PosterGenerator() {
 		}));
 	};
 
-	// Функция для форматирования даты
-	const formatDate = (date: Date) => {
-		return format(date, 'd MMMM', { locale: ru });
-	};
-
 	// Обработчик изменения даты
-	const handleDateChange = (date: Date | undefined, dayKey: 'first' | 'second') => {
-		if (date) {
-			setDates(prev => ({
-				...prev,
-				[dayKey]: {
-					...prev[dayKey],
-					date: formatDate(date)
-				}
-			}));
-		}
+	const handleDateChange = (value: string, dayKey: 'first' | 'second') => {
+		setDates(prev => ({
+			...prev,
+			[dayKey]: {
+				...prev[dayKey],
+				date: value
+			}
+		}));
 	};
 
 	// Обработчик очистки даты и времени
@@ -306,26 +295,14 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date1">Дата</Label>
 											<div className="flex gap-2">
-												<Popover>
-													<PopoverTrigger asChild>
-														<Button
-															variant="outline"
-															className="flex-1 justify-start text-left font-normal"
-														>
-															<CalendarIcon className="mr-2 h-4 w-4" />
-															{dates.first.date || "дд/мм"}
-														</Button>
-													</PopoverTrigger>
-													<PopoverContent className="w-auto p-0">
-														<Calendar
-															mode="single"
-															onSelect={(date) => handleDateChange(date, 'first')}
-															locale={ru}
-															today={new Date()}
-															showOutsideDays={true}
-														/>
-													</PopoverContent>
-												</Popover>
+												<Input
+													id="date1"
+													type="text"
+													placeholder="1 января"
+													value={dates.first.date}
+													onChange={(e) => handleDateChange(e.target.value, 'first')}
+													className="flex-1"
+												/>
 												{(dates.first.date || dates.first.timeStart || dates.first.timeEnd) && (
 													<Button
 														variant="outline"
@@ -406,26 +383,14 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date2">Дата</Label>
 											<div className="flex gap-2">
-												<Popover>
-													<PopoverTrigger asChild>
-														<Button
-															variant="outline"
-															className="flex-1 justify-start text-left font-normal"
-														>
-															<CalendarIcon className="mr-2 h-4 w-4" />
-															{dates.second.date || "дд/мм"}
-														</Button>
-													</PopoverTrigger>
-													<PopoverContent className="w-auto p-0">
-														<Calendar
-															mode="single"
-															onSelect={(date) => handleDateChange(date, 'second')}
-															locale={ru}
-															today={new Date()}
-															showOutsideDays={true}
-														/>
-													</PopoverContent>
-												</Popover>
+												<Input
+													id="date2"
+													type="text"
+													placeholder="2 января"
+													value={dates.second.date}
+													onChange={(e) => handleDateChange(e.target.value, 'second')}
+													className="flex-1"
+												/>
 												{(dates.second.date || dates.second.timeStart || dates.second.timeEnd) && (
 													<Button
 														variant="outline"
