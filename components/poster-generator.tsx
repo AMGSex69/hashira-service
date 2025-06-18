@@ -11,19 +11,16 @@ import { RotateCcw, X, Download, FileText } from "lucide-react";
 import { Clock, Calendar } from "lucide-react";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { formatDate } from "@/lib/utils";
 
 export default function PosterGenerator() {
 	const [dates, setDates] = useState({
 		first: {
 			date: '',
-			displayDate: '',
 			timeStart: '',
 			timeEnd: ''
 		},
 		second: {
 			date: '',
-			displayDate: '',
 			timeStart: '',
 			timeEnd: ''
 		}
@@ -38,20 +35,7 @@ export default function PosterGenerator() {
 			try {
 				const parsedData = JSON.parse(savedData);
 				if (parsedData.dates) {
-					// Обновляем старые данные, добавляя displayDate если его нет
-					const updatedDates = {
-						first: {
-							...parsedData.dates.first,
-							displayDate: parsedData.dates.first.displayDate ||
-								(parsedData.dates.first.date ? formatDate(parsedData.dates.first.date) : '')
-						},
-						second: {
-							...parsedData.dates.second,
-							displayDate: parsedData.dates.second.displayDate ||
-								(parsedData.dates.second.date ? formatDate(parsedData.dates.second.date) : '')
-						}
-					};
-					setDates(updatedDates);
+					setDates(parsedData.dates);
 				}
 				if (parsedData.phone) {
 					setPhone(parsedData.phone);
@@ -92,8 +76,7 @@ export default function PosterGenerator() {
 			...prev,
 			[dayKey]: {
 				...prev[dayKey],
-				date: value,
-				displayDate: value ? formatDate(value) : ''
+				date: value
 			}
 		}));
 	};
@@ -104,7 +87,6 @@ export default function PosterGenerator() {
 			...prev,
 			[dayKey]: {
 				date: '',
-				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
@@ -116,13 +98,11 @@ export default function PosterGenerator() {
 		setDates({
 			first: {
 				date: '',
-				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			},
 			second: {
 				date: '',
-				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
