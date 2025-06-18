@@ -3,6 +3,7 @@ import Image from "next/image";
 
 interface DateInfo {
 	date: string;
+	displayDate: string;
 	timeStart: string;
 	timeEnd: string;
 }
@@ -36,8 +37,8 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 	// Проверяем, есть ли вторая дата (не пустая)
 	const hasSecondDate = () => {
 		return dates.second &&
-			dates.second.date &&
-			dates.second.date.trim() !== "";
+			dates.second.displayDate &&
+			dates.second.displayDate.trim() !== "";
 	};
 
 	// Получаем время для второй даты (если не указано, используем время первой)
@@ -55,7 +56,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 		if (hasSecondDate() && isSameTime()) {
 			const timeStr = `с ${dates.first.timeStart} до ${dates.first.timeEnd}`;
 
-			if (areDatesConsecutive(dates.first.date, dates.second!.date)) {
+			if (areDatesConsecutive(dates.first.displayDate, dates.second!.displayDate)) {
 				// Если даты идут подряд
 				return (
 					<div
@@ -68,7 +69,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 					>
 						<div className="flex justify-center">
 							<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
-								{dates.first.date.toLowerCase()}-{dates.second!.date.toLowerCase()}
+								{dates.first.displayDate.toLowerCase()}-{dates.second!.displayDate.toLowerCase()}
 							</div>
 						</div>
 						<div
@@ -94,7 +95,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 					>
 						<div className="flex justify-center">
 							<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
-								{dates.first.date.toLowerCase()} и {dates.second!.date.toLowerCase()}
+								{dates.first.displayDate.toLowerCase()} и {dates.second!.displayDate.toLowerCase()}
 							</div>
 						</div>
 						<div
@@ -123,7 +124,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 				>
 					<div className="flex justify-center">
 						<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
-							{dates.first.date.toLowerCase()}
+							{dates.first.displayDate.toLowerCase()}
 						</div>
 					</div>
 					<div
@@ -160,7 +161,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 								}}
 							>
 								<div className="whitespace-nowrap relative poster-date-underline">
-									{dates.first.date}
+									{dates.first.displayDate}
 								</div>
 							</div>
 						</div>
@@ -190,7 +191,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 								}}
 							>
 								<div className="whitespace-nowrap relative poster-date-underline">
-									{dates.second!.date}
+									{dates.second!.displayDate}
 								</div>
 							</div>
 						</div>

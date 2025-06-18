@@ -8,19 +8,22 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RotateCcw, X, Download, FileText } from "lucide-react";
-import { Clock } from "lucide-react";
+import { Clock, Calendar } from "lucide-react";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { formatDate } from "@/lib/utils";
 
 export default function PosterGenerator() {
 	const [dates, setDates] = useState({
 		first: {
 			date: '',
+			displayDate: '',
 			timeStart: '',
 			timeEnd: ''
 		},
 		second: {
 			date: '',
+			displayDate: '',
 			timeStart: '',
 			timeEnd: ''
 		}
@@ -35,7 +38,20 @@ export default function PosterGenerator() {
 			try {
 				const parsedData = JSON.parse(savedData);
 				if (parsedData.dates) {
-					setDates(parsedData.dates);
+					// Обновляем старые данные, добавляя displayDate если его нет
+					const updatedDates = {
+						first: {
+							...parsedData.dates.first,
+							displayDate: parsedData.dates.first.displayDate ||
+								(parsedData.dates.first.date ? formatDate(parsedData.dates.first.date) : '')
+						},
+						second: {
+							...parsedData.dates.second,
+							displayDate: parsedData.dates.second.displayDate ||
+								(parsedData.dates.second.date ? formatDate(parsedData.dates.second.date) : '')
+						}
+					};
+					setDates(updatedDates);
 				}
 				if (parsedData.phone) {
 					setPhone(parsedData.phone);
@@ -76,7 +92,8 @@ export default function PosterGenerator() {
 			...prev,
 			[dayKey]: {
 				...prev[dayKey],
-				date: value
+				date: value,
+				displayDate: value ? formatDate(value) : ''
 			}
 		}));
 	};
@@ -87,6 +104,7 @@ export default function PosterGenerator() {
 			...prev,
 			[dayKey]: {
 				date: '',
+				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
@@ -98,11 +116,13 @@ export default function PosterGenerator() {
 		setDates({
 			first: {
 				date: '',
+				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			},
 			second: {
 				date: '',
+				displayDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
@@ -295,14 +315,16 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date1">Дата</Label>
 											<div className="flex gap-2">
-												<Input
-													id="date1"
-													type="text"
-													placeholder="1 января"
-													value={dates.first.date}
-													onChange={(e) => handleDateChange(e.target.value, 'first')}
-													className="flex-1"
-												/>
+												<div className="relative flex-1">
+													<Input
+														id="date1"
+														type="date"
+														value={dates.first.date}
+														onChange={(e) => handleDateChange(e.target.value, 'first')}
+														className="pr-10"
+													/>
+													<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+												</div>
 												{(dates.first.date || dates.first.timeStart || dates.first.timeEnd) && (
 													<Button
 														variant="outline"
@@ -383,14 +405,16 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date2">Дата</Label>
 											<div className="flex gap-2">
-												<Input
-													id="date2"
-													type="text"
-													placeholder="2 января"
-													value={dates.second.date}
-													onChange={(e) => handleDateChange(e.target.value, 'second')}
-													className="flex-1"
-												/>
+												<div className="relative flex-1">
+													<Input
+														id="date2"
+														type="date"
+														value={dates.second.date}
+														onChange={(e) => handleDateChange(e.target.value, 'second')}
+														className="pr-10"
+													/>
+													<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+												</div>
 												{(dates.second.date || dates.second.timeStart || dates.second.timeEnd) && (
 													<Button
 														variant="outline"
