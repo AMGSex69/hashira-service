@@ -16,11 +16,13 @@ export default function PosterGenerator() {
 	const [dates, setDates] = useState({
 		first: {
 			date: '',
+			isoDate: '',  // Для HTML5 календаря
 			timeStart: '',
 			timeEnd: ''
 		},
 		second: {
 			date: '',
+			isoDate: '',  // Для HTML5 календаря
 			timeStart: '',
 			timeEnd: ''
 		}
@@ -70,13 +72,31 @@ export default function PosterGenerator() {
 		}));
 	};
 
+	// Функция преобразования ISO даты в нужный формат
+	const convertISOToDisplayDate = (isoDate: string): string => {
+		if (!isoDate) return '';
+
+		const date = new Date(isoDate);
+		const months = [
+			'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+			'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+		];
+
+		const day = date.getDate();
+		const month = months[date.getMonth()];
+
+		return `${day} ${month}`;
+	};
+
 	// Обработчик изменения даты
 	const handleDateChange = (value: string, dayKey: 'first' | 'second') => {
+		const displayDate = convertISOToDisplayDate(value);
 		setDates(prev => ({
 			...prev,
 			[dayKey]: {
 				...prev[dayKey],
-				date: value
+				date: displayDate,  // Сохраняем в нужном формате для отображения
+				isoDate: value      // Сохраняем ISO формат для календаря
 			}
 		}));
 	};
@@ -87,6 +107,7 @@ export default function PosterGenerator() {
 			...prev,
 			[dayKey]: {
 				date: '',
+				isoDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
@@ -98,11 +119,13 @@ export default function PosterGenerator() {
 		setDates({
 			first: {
 				date: '',
+				isoDate: '',
 				timeStart: '',
 				timeEnd: ''
 			},
 			second: {
 				date: '',
+				isoDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
@@ -299,7 +322,7 @@ export default function PosterGenerator() {
 													<Input
 														id="date1"
 														type="date"
-														value={dates.first.date}
+														value={dates.first.isoDate}
 														onChange={(e) => handleDateChange(e.target.value, 'first')}
 														className="pr-10"
 													/>
@@ -389,7 +412,7 @@ export default function PosterGenerator() {
 													<Input
 														id="date2"
 														type="date"
-														value={dates.second.date}
+														value={dates.second.isoDate}
 														onChange={(e) => handleDateChange(e.target.value, 'second')}
 														className="pr-10"
 													/>

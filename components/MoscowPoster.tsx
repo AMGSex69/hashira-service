@@ -3,6 +3,7 @@ import Image from "next/image";
 
 interface DateInfo {
 	date: string;
+	isoDate: string;
 	timeStart: string;
 	timeEnd: string;
 }
