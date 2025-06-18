@@ -16,12 +16,12 @@ import { useToast } from "@/hooks/use-toast"
 import { scriptTemplates, smartIntercomInfo } from "@/lib/script-templates"
 import { formatDate, parseCustomDate, parseCustomTime } from "@/lib/utils"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { ChatMessageContext } from "@/lib/chat-message-context"
@@ -31,527 +31,533 @@ import { Document, Packer, Paragraph, TextRun } from "docx"
 const DISTRICTS = ["САО", "СВАО", "ВАО", "ЮВАО", "ЮАО", "ЮЗАО", "ЗАО", "СЗАО", "ЦАО", "ТиНАО", "ЗелАО"]
 
 export default function ScriptGenerator() {
-  const { toast } = useToast()
-  const { addAddressToChat } = useContext(ChatMessageContext)
-  const [scriptType, setScriptType] = useState("ego-rounds")
-  const [formData, setFormData] = useState({
-    district: "",
-    address: "",
-    topic: "",
-    completionDate: "", // Новое поле - дата завершения ОСС
-    electronicDate: "",
-    electronicDateText: "",
-    electronicTime: "09:00",
-    electronicTimeText: "09:00",
-    paperDate: "",
-    paperDateText: "",
-    paperTime: "09:00",
-    paperTimeText: "09:00",
-    round1StartDate: "",
-    round1StartDateText: "",
-    round1StartTime: "18:30",
-    round1StartTimeText: "18:30",
-    round1EndTime: "20:30",
-    round1EndTimeText: "20:30",
-    round2StartDate: "",
-    round2StartDateText: "",
-    round2StartTime: "18:30",
-    round2StartTimeText: "18:30",
-    round2EndTime: "20:30",
-    round2EndTimeText: "20:30",
-    administrator: "",
-    adminAddress: "",
-  })
-  const [generatedScript, setGeneratedScript] = useState("")
-  const [editableScript, setEditableScript] = useState("")
-  const [showGoogleDocDialog, setShowGoogleDocDialog] = useState(false)
-  const [useManualInput, setUseManualInput] = useState(false)
-  const [includeSmartIntercomInfo, setIncludeSmartIntercomInfo] = useState(false)
-  const [fileName, setFileName] = useState("")
-
-  // Загрузка данных из localStorage при монтировании компонента
-  useEffect(() => {
-    const savedData = localStorage.getItem("scriptGeneratorData")
-    if (savedData) {
-      try {
-        const parsedData = JSON.parse(savedData)
-        setFormData(parsedData.formData || formData)
-        setScriptType(parsedData.scriptType || "ego-rounds")
-        setUseManualInput(parsedData.useManualInput || false)
-        setIncludeSmartIntercomInfo(parsedData.includeSmartIntercomInfo || false)
-        setGeneratedScript(parsedData.generatedScript || "")
-        setEditableScript(parsedData.editableScript || "")
-        setFileName(parsedData.fileName || "")
-      } catch (error) {
-        console.error("Ошибка при загрузке данных из localStorage:", error)
-      }
-    }
-  }, [])
-
-  // Сохранение данных в localStorage при изменении
-  useEffect(() => {
-    const dataToSave = {
-      formData,
-      scriptType,
-      useManualInput,
-      includeSmartIntercomInfo,
-      generatedScript,
-      editableScript,
-      fileName,
-    }
-    localStorage.setItem("scriptGeneratorData", JSON.stringify(dataToSave))
-  }, [formData, scriptType, useManualInput, includeSmartIntercomInfo, generatedScript, editableScript, fileName])
-
-  // Эффект для автоматического обновления дат от даты завершения ОСС (только в режиме календаря)
-  useEffect(() => {
-    if (formData.completionDate && !useManualInput) {
-      // Дата электронного голосования = дата завершения ОСС
-      const electronicDate = formData.completionDate
-
-      // Дата бумажного голосования = дата завершения ОСС - 2 дня
-      const completionDateObj = new Date(formData.completionDate)
-      completionDateObj.setDate(completionDateObj.getDate() - 2)
-      const paperDate = completionDateObj.toISOString().split("T")[0]
-
-      // Обновляем обе даты
-      setFormData((prev) => ({
-        ...prev,
-        electronicDate: electronicDate,
-        electronicDateText: formatDate(electronicDate),
-        paperDate: paperDate,
-        paperDateText: formatDate(paperDate),
-      }))
-    }
-  }, [formData.completionDate, useManualInput])
-
-  // Добавить функцию для генерации имени файла после функции handleScriptEdit
-  const generateFileName = () => {
-    if (!formData.address) return "Скрипт для обзвона"
-
-    let scriptTypeName = ""
-    switch (scriptType) {
-      case "ego-rounds":
-        scriptTypeName = "ЕГО с обходами"
-        break
-      case "ego-no-rounds":
-        scriptTypeName = "ЕГО без обходов"
-        break
-      case "not-ego-no-rounds":
-        scriptTypeName = "не ЕГО без обходов"
-        break
-      case "not-ego-with-rounds":
-        scriptTypeName = "не ЕГО с обходами"
-        break
-      default:
-        scriptTypeName = scriptType
-    }
-
-    return `Скрипт для обзвона_${formData.address}_${scriptTypeName}`
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-
-    // Sync date/time picker values with text inputs when in picker mode
-    if (!useManualInput) {
-      if (name.endsWith("Date")) {
-        const textFieldName = `${name}Text`
-        if (value) {
-          const formattedDate = formatDate(value)
-          setFormData((prev) => ({ ...prev, [textFieldName]: formattedDate }))
-        }
-      } else if (name.endsWith("Time")) {
-        const textFieldName = `${name}Text`
-        setFormData((prev) => ({ ...prev, [textFieldName]: value }))
-      }
-    }
-  }
-
-  const handleTextInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-
-    // Try to sync text inputs with date/time pickers
-    if (useManualInput) {
-      if (name.endsWith("DateText")) {
-        const pickerName = name.replace("Text", "")
-        try {
-          const dateValue = parseCustomDate(value)
-          if (dateValue) {
-            const isoDate = dateValue.toISOString().split("T")[0]
-            setFormData((prev) => ({ ...prev, [pickerName]: isoDate }))
-          }
-        } catch (error) {
-          // Invalid date format, don't update the picker
-        }
-      } else if (name.endsWith("TimeText")) {
-        const pickerName = name.replace("Text", "")
-        try {
-          const timeValue = parseCustomTime(value)
-          if (timeValue) {
-            setFormData((prev) => ({ ...prev, [pickerName]: timeValue }))
-          }
-        } catch (error) {
-          // Invalid time format, don't update the picker
-        }
-      }
-    }
-  }
-
-  const handleSelectChange = (value: string) => {
-    setScriptType(value)
-  }
-
-  const handleDistrictChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, district: value }))
-  }
-
-  const handleScriptEdit = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setEditableScript(e.target.value)
-  }
-
-  const applyScriptChanges = () => {
-    setGeneratedScript(editableScript)
-    toast({
-      title: "Изменения применены",
-      description: "Внесенные изменения успешно применены к скрипту",
-    })
-  }
-
-  const toggleInputMode = () => {
-    setUseManualInput(!useManualInput)
-  }
-
-  const toggleSmartIntercomInfo = () => {
-    setIncludeSmartIntercomInfo(!includeSmartIntercomInfo)
-  }
-
-  const resetForm = () => {
-    const defaultFormData = {
-      district: "",
-      address: "",
-      topic: "",
-      completionDate: "",
-      electronicDate: "",
-      electronicDateText: "",
-      electronicTime: "09:00",
-      electronicTimeText: "09:00",
-      paperDate: "",
-      paperDateText: "",
-      paperTime: "09:00",
-      paperTimeText: "09:00",
-      round1StartDate: "",
-      round1StartDateText: "",
-      round1StartTime: "18:30",
-      round1StartTimeText: "18:30",
-      round1EndTime: "20:30",
-      round1EndTimeText: "20:30",
-      round2StartDate: "",
-      round2StartDateText: "",
-      round2StartTime: "18:30",
-      round2StartTimeText: "18:30",
-      round2EndTime: "20:30",
-      round2EndTimeText: "20:30",
-      administrator: "",
-      adminAddress: "",
-    }
-
-    setFormData(defaultFormData)
-    setScriptType("ego-rounds")
-    setGeneratedScript("")
-    setEditableScript("")
-    setFileName("")
-    setUseManualInput(false)
-    setIncludeSmartIntercomInfo(false)
-
-    // Очищаем localStorage
-    localStorage.removeItem("scriptGeneratorData")
-
-    toast({
-      title: "Форма сброшена",
-      description: "Все поля формы сброшены до значений по умолчанию",
-    })
-  }
-
-  const generateScript = () => {
-    const template = scriptTemplates[scriptType]
-
-    if (!template) {
-      toast({
-        title: "Ошибка",
-        description: "Шаблон скрипта не найден",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Use text inputs if in manual mode, otherwise use formatted dates from pickers
-    const electronicDateFormatted = useManualInput
-      ? formData.electronicDateText
-      : formData.electronicDate
-        ? formatDate(formData.electronicDate)
-        : ""
-
-    const paperDateFormatted = useManualInput
-      ? formData.paperDateText
-      : formData.paperDate
-        ? formatDate(formData.paperDate)
-        : ""
-
-    // Format rounds dates
-    let roundDatesText = ""
-
-    if (useManualInput) {
-      // Use text inputs directly
-      if (formData.round1StartDateText) {
-        if (formData.round2StartDateText) {
-          roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText} и ${formData.round2StartDateText} с ${formData.round2StartTimeText} до ${formData.round2EndTimeText}`
-        } else {
-          roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText}`
-        }
-      }
-    } else {
-      // Use date pickers and format
-      if (formData.round1StartDate) {
-        const round1Date = formatDate(formData.round1StartDate)
-
-        if (formData.round2StartDate) {
-          const round2Date = formatDate(formData.round2StartDate)
-          roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime} и ${round2Date} с ${formData.round2StartTime} до ${formData.round2EndTime}`
-        } else {
-          roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime}`
-        }
-      }
-    }
-
-    // Get the time values based on input mode
-    const electronicTimeValue = useManualInput ? formData.electronicTimeText : formData.electronicTime
-    const paperTimeValue = useManualInput ? formData.paperTimeText : formData.paperTime
-
-    let script = template
-      .replace("{{address}}", `**${formData.address}**`)
-      .replace("{{topic}}", `**${formData.topic}**`)
-      .replace("{{electronicDate}}", `**${electronicDateFormatted} ${electronicTimeValue}**`)
-      .replace("{{paperDate}}", `**${paperDateFormatted} ${paperTimeValue}**`)
-
-    // Add script-specific replacements
-    if (scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds") {
-      script = script.replace("{{roundDates}}", `**${roundDatesText}**`)
-    }
-
-    if (scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds") {
-      script = script
-        .replace("{{administrator}}", `**${formData.administrator}**`)
-        .replace("{{adminAddress}}", `**${formData.adminAddress}**`)
-    }
-
-    // Add Smart Intercom information if enabled
-    if (includeSmartIntercomInfo) {
-      script += "\n\n" + smartIntercomInfo
-    }
-
-    setGeneratedScript(script)
-    setEditableScript(script)
-    setFileName(generateFileName())
-
-    toast({
-      title: "Скрипт сгенерирован",
-      description: "Скрипт успешно сгенерирован и готов к использованию",
-    })
-  }
-
-  const copyToClipboard = async () => {
-    try {
-      // Проверяем поддержку современного Clipboard API
-      if (navigator.clipboard && window.ClipboardItem) {
-        // Создаем HTML версию с форматированием
-        const htmlContent = editableScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
-
-        // Создаем plain text версию без markdown
-        const plainText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
-
-        // Создаем ClipboardItem с обоими форматами
-        const clipboardItem = new ClipboardItem({
-          "text/html": new Blob([htmlContent], { type: "text/html" }),
-          "text/plain": new Blob([plainText], { type: "text/plain" }),
-        })
-
-        await navigator.clipboard.write([clipboardItem])
-
-        toast({
-          title: "Скопировано с форматированием",
-          description: "Скрипт скопирован в буфер обмена с сохранением жирного текста",
-        })
-      } else {
-        // Fallback для старых браузеров - копируем только plain text
-        const cleanText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
-
-        const textArea = document.createElement("textarea")
-        textArea.value = cleanText
-        textArea.style.position = "fixed"
-        textArea.style.left = "-999999px"
-        textArea.style.top = "-999999px"
-        document.body.appendChild(textArea)
-
-        textArea.focus()
-        textArea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textArea)
-
-        toast({
-          title: "Скопировано",
-          description: "Скрипт скопирован в буфер обмена (без форматирования - браузер не поддерживает)",
-        })
-      }
-    } catch (error) {
-      console.error("Clipboard error:", error)
-
-      // Еще один fallback
-      try {
-        const cleanText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
-        await navigator.clipboard.writeText(cleanText)
-
-        toast({
-          title: "Скопировано",
-          description: "Скрипт скопирован в буфер обмена (только текст)",
-        })
-      } catch (fallbackError) {
-        toast({
-          title: "Ошибка копирования",
-          description: "Не удалось скопировать в буфер обмена. Выделите текст вручную и нажмите Ctrl+C.",
-          variant: "destructive",
-        })
-      }
-    }
-  }
-
-  const exportToWord = async () => {
-    try {
-      // Парсим markdown текст и создаем параграфы
-      const lines = editableScript.split("\n")
-      const paragraphs: Paragraph[] = []
-
-      for (const line of lines) {
-        if (line.trim() === "") {
-          // Пустая строка
-          paragraphs.push(new Paragraph({ children: [new TextRun("")] }))
-          continue
-        }
-
-        const children: TextRun[] = []
-        const currentText = line
-
-        // Обрабатываем жирный текст **text**
-        const boldRegex = /\*\*(.*?)\*\*/g
-        let lastIndex = 0
-        let match
-
-        while ((match = boldRegex.exec(line)) !== null) {
-          // Добавляем обычный текст перед жирным
-          if (match.index > lastIndex) {
-            const normalText = line.substring(lastIndex, match.index)
-            if (normalText) {
-              children.push(new TextRun({ text: normalText }))
-            }
-          }
-
-          // Добавляем жирный текст
-          children.push(
-            new TextRun({
-              text: match[1],
-              bold: true,
-            }),
-          )
-
-          lastIndex = match.index + match[0].length
-        }
-
-        // Добавляем оставшийся обычный текст
-        if (lastIndex < line.length) {
-          const remainingText = line.substring(lastIndex)
-          if (remainingText) {
-            children.push(new TextRun({ text: remainingText }))
-          }
-        }
-
-        // Если нет жирного текста, добавляем всю строку как обычный текст
-        if (children.length === 0) {
-          children.push(new TextRun({ text: line }))
-        }
-
-        paragraphs.push(new Paragraph({ children }))
-      }
-
-      // Создаем документ
-      const doc = new Document({
-        sections: [
-          {
-            properties: {},
-            children: paragraphs,
-          },
-        ],
-        styles: {
-          default: {
-            document: {
-              run: {
-                font: "Times New Roman",
-                size: 24, // 12pt = 24 half-points
-              },
-            },
-          },
-        },
-      })
-
-      // Генерируем файл
-      const buffer = await Packer.toBuffer(doc)
-      const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      })
-
-      const link = document.createElement("a")
-      link.href = URL.createObjectURL(blob)
-      link.download = `${fileName}.docx`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      toast({
-        title: "Экспорт выполнен",
-        description: "Скрипт успешно экспортирован в Word (.docx)",
-      })
-    } catch (error) {
-      console.error("Ошибка экспорта:", error)
-      toast({
-        title: "Ошибка экспорта",
-        description: "Не удалось создать Word документ. Попробуйте еще раз.",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const createGoogleDoc = () => {
-    // Show dialog with instructions instead of trying to use clipboard
-    setShowGoogleDocDialog(true)
-  }
-
-  const openGoogleDoc = () => {
-    // Create a new Google Doc by opening a new tab with the Google Docs URL
-    const docTitle = encodeURIComponent(fileName)
-    const url = `https://docs.new?title=${docTitle}`
-
-    // Open a new tab with Google Docs
-    window.open(url, "_blank")
-    setShowGoogleDocDialog(false)
-  }
-
-  const printScript = () => {
-    // Create a printable version of the script
-    const printWindow = window.open("", "_blank")
-    if (printWindow) {
-      const htmlContent = editableScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
-
-      printWindow.document.write(`
+	const { toast } = useToast()
+	const { addAddressToChat } = useContext(ChatMessageContext)
+	const [scriptType, setScriptType] = useState("ego-rounds")
+	const [formData, setFormData] = useState({
+		district: "",
+		address: "",
+		topic: "",
+		completionDate: "", // Новое поле - дата завершения ОСС
+		completionDateText: "",
+		electronicDate: "",
+		electronicDateText: "",
+		electronicTime: "09:00",
+		electronicTimeText: "09:00",
+		paperDate: "",
+		paperDateText: "",
+		paperTime: "09:00",
+		paperTimeText: "09:00",
+		round1StartDate: "",
+		round1StartDateText: "",
+		round1StartTime: "18:30",
+		round1StartTimeText: "18:30",
+		round1EndTime: "20:30",
+		round1EndTimeText: "20:30",
+		round2StartDate: "",
+		round2StartDateText: "",
+		round2StartTime: "18:30",
+		round2StartTimeText: "18:30",
+		round2EndTime: "20:30",
+		round2EndTimeText: "20:30",
+		administrator: "",
+		adminAddress: "",
+	})
+	const [generatedScript, setGeneratedScript] = useState("")
+	const [editableScript, setEditableScript] = useState("")
+	const [showGoogleDocDialog, setShowGoogleDocDialog] = useState(false)
+	const [useManualInput, setUseManualInput] = useState(false)
+	const [includeSmartIntercomInfo, setIncludeSmartIntercomInfo] = useState(false)
+	const [fileName, setFileName] = useState("")
+	const [isLoaded, setIsLoaded] = useState(false)
+
+	// Загрузка данных из localStorage при монтировании компонента
+	useEffect(() => {
+		const savedData = localStorage.getItem("scriptGeneratorData")
+		if (savedData) {
+			try {
+				const parsedData = JSON.parse(savedData)
+				setFormData(parsedData.formData || formData)
+				setScriptType(parsedData.scriptType || "ego-rounds")
+				setUseManualInput(parsedData.useManualInput || false)
+				setIncludeSmartIntercomInfo(parsedData.includeSmartIntercomInfo || false)
+				setGeneratedScript(parsedData.generatedScript || "")
+				setEditableScript(parsedData.editableScript || "")
+				setFileName(parsedData.fileName || "")
+			} catch (error) {
+				console.error("Ошибка при загрузке данных из localStorage:", error)
+			}
+		}
+		setIsLoaded(true)
+	}, [])
+
+	// Сохранение данных в localStorage при изменении (только после загрузки)
+	useEffect(() => {
+		if (!isLoaded) return
+
+		const dataToSave = {
+			formData,
+			scriptType,
+			useManualInput,
+			includeSmartIntercomInfo,
+			generatedScript,
+			editableScript,
+			fileName,
+		}
+		localStorage.setItem("scriptGeneratorData", JSON.stringify(dataToSave))
+	}, [formData, scriptType, useManualInput, includeSmartIntercomInfo, generatedScript, editableScript, fileName, isLoaded])
+
+	// Эффект для автоматического обновления дат от даты завершения ОСС (только в режиме календаря)
+	useEffect(() => {
+		if (formData.completionDate && !useManualInput) {
+			// Дата электронного голосования = дата завершения ОСС
+			const electronicDate = formData.completionDate
+
+			// Дата бумажного голосования = дата завершения ОСС - 2 дня
+			const completionDateObj = new Date(formData.completionDate)
+			completionDateObj.setDate(completionDateObj.getDate() - 2)
+			const paperDate = completionDateObj.toISOString().split("T")[0]
+
+			// Обновляем обе даты
+			setFormData((prev) => ({
+				...prev,
+				electronicDate: electronicDate,
+				electronicDateText: formatDate(electronicDate),
+				paperDate: paperDate,
+				paperDateText: formatDate(paperDate),
+			}))
+		}
+	}, [formData.completionDate, useManualInput])
+
+	// Добавить функцию для генерации имени файла после функции handleScriptEdit
+	const generateFileName = () => {
+		if (!formData.address) return "Скрипт для обзвона"
+
+		let scriptTypeName = ""
+		switch (scriptType) {
+			case "ego-rounds":
+				scriptTypeName = "ЕГО с обходами"
+				break
+			case "ego-no-rounds":
+				scriptTypeName = "ЕГО без обходов"
+				break
+			case "not-ego-no-rounds":
+				scriptTypeName = "не ЕГО без обходов"
+				break
+			case "not-ego-with-rounds":
+				scriptTypeName = "не ЕГО с обходами"
+				break
+			default:
+				scriptTypeName = scriptType
+		}
+
+		return `Скрипт для обзвона_${formData.address}_${scriptTypeName}`
+	}
+
+	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+		const { name, value } = e.target
+		setFormData((prev) => ({ ...prev, [name]: value }))
+
+		// Sync date/time picker values with text inputs when in picker mode
+		if (!useManualInput) {
+			if (name.endsWith("Date")) {
+				const textFieldName = `${name}Text`
+				if (value) {
+					const formattedDate = formatDate(value)
+					setFormData((prev) => ({ ...prev, [textFieldName]: formattedDate }))
+				}
+			} else if (name.endsWith("Time")) {
+				const textFieldName = `${name}Text`
+				setFormData((prev) => ({ ...prev, [textFieldName]: value }))
+			}
+		}
+	}
+
+	const handleTextInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const { name, value } = e.target
+		setFormData((prev) => ({ ...prev, [name]: value }))
+
+		// Try to sync text inputs with date/time pickers
+		if (useManualInput) {
+			if (name.endsWith("DateText")) {
+				const pickerName = name.replace("Text", "")
+				try {
+					const dateValue = parseCustomDate(value)
+					if (dateValue) {
+						const isoDate = dateValue.toISOString().split("T")[0]
+						setFormData((prev) => ({ ...prev, [pickerName]: isoDate }))
+					}
+				} catch (error) {
+					// Invalid date format, don't update the picker
+				}
+			} else if (name.endsWith("TimeText")) {
+				const pickerName = name.replace("Text", "")
+				try {
+					const timeValue = parseCustomTime(value)
+					if (timeValue) {
+						setFormData((prev) => ({ ...prev, [pickerName]: timeValue }))
+					}
+				} catch (error) {
+					// Invalid time format, don't update the picker
+				}
+			}
+		}
+	}
+
+	const handleSelectChange = (value: string) => {
+		setScriptType(value)
+	}
+
+	const handleDistrictChange = (value: string) => {
+		setFormData((prev) => ({ ...prev, district: value }))
+	}
+
+	const handleScriptEdit = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+		setEditableScript(e.target.value)
+	}
+
+	const applyScriptChanges = () => {
+		setGeneratedScript(editableScript)
+		toast({
+			title: "Изменения применены",
+			description: "Внесенные изменения успешно применены к скрипту",
+		})
+	}
+
+	const toggleInputMode = () => {
+		setUseManualInput(!useManualInput)
+	}
+
+	const toggleSmartIntercomInfo = () => {
+		setIncludeSmartIntercomInfo(!includeSmartIntercomInfo)
+	}
+
+	const resetForm = () => {
+		const defaultFormData = {
+			district: "",
+			address: "",
+			topic: "",
+			completionDate: "",
+			completionDateText: "",
+			electronicDate: "",
+			electronicDateText: "",
+			electronicTime: "09:00",
+			electronicTimeText: "09:00",
+			paperDate: "",
+			paperDateText: "",
+			paperTime: "09:00",
+			paperTimeText: "09:00",
+			round1StartDate: "",
+			round1StartDateText: "",
+			round1StartTime: "18:30",
+			round1StartTimeText: "18:30",
+			round1EndTime: "20:30",
+			round1EndTimeText: "20:30",
+			round2StartDate: "",
+			round2StartDateText: "",
+			round2StartTime: "18:30",
+			round2StartTimeText: "18:30",
+			round2EndTime: "20:30",
+			round2EndTimeText: "20:30",
+			administrator: "",
+			adminAddress: "",
+		}
+
+		setFormData(defaultFormData)
+		setScriptType("ego-rounds")
+		setGeneratedScript("")
+		setEditableScript("")
+		setFileName("")
+		setUseManualInput(false)
+		setIncludeSmartIntercomInfo(false)
+
+		// Очищаем localStorage
+		localStorage.removeItem("scriptGeneratorData")
+
+		toast({
+			title: "Форма сброшена",
+			description: "Все поля формы сброшены до значений по умолчанию",
+		})
+	}
+
+	const generateScript = () => {
+		const template = scriptTemplates[scriptType]
+
+		if (!template) {
+			toast({
+				title: "Ошибка",
+				description: "Шаблон скрипта не найден",
+				variant: "destructive",
+			})
+			return
+		}
+
+		// Use text inputs if in manual mode, otherwise use formatted dates from pickers
+		const electronicDateFormatted = useManualInput
+			? formData.electronicDateText
+			: formData.electronicDate
+				? formatDate(formData.electronicDate)
+				: ""
+
+		const paperDateFormatted = useManualInput
+			? formData.paperDateText
+			: formData.paperDate
+				? formatDate(formData.paperDate)
+				: ""
+
+		// Format rounds dates
+		let roundDatesText = ""
+
+		if (useManualInput) {
+			// Use text inputs directly
+			if (formData.round1StartDateText) {
+				if (formData.round2StartDateText) {
+					roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText} и ${formData.round2StartDateText} с ${formData.round2StartTimeText} до ${formData.round2EndTimeText}`
+				} else {
+					roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText}`
+				}
+			}
+		} else {
+			// Use date pickers and format
+			if (formData.round1StartDate) {
+				const round1Date = formatDate(formData.round1StartDate)
+
+				if (formData.round2StartDate) {
+					const round2Date = formatDate(formData.round2StartDate)
+					roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime} и ${round2Date} с ${formData.round2StartTime} до ${formData.round2EndTime}`
+				} else {
+					roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime}`
+				}
+			}
+		}
+
+		// Get the time values based on input mode
+		const electronicTimeValue = useManualInput ? formData.electronicTimeText : formData.electronicTime
+		const paperTimeValue = useManualInput ? formData.paperTimeText : formData.paperTime
+
+		let script = template
+			.replace("{{address}}", `**${formData.address}**`)
+			.replace("{{topic}}", `**${formData.topic}**`)
+			.replace("{{electronicDate}}", `**${electronicDateFormatted} ${electronicTimeValue}**`)
+			.replace("{{paperDate}}", `**${paperDateFormatted} ${paperTimeValue}**`)
+
+		// Add script-specific replacements
+		if (scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds") {
+			script = script.replace("{{roundDates}}", `**${roundDatesText}**`)
+		}
+
+		if (scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds") {
+			script = script
+				.replace("{{administrator}}", `**${formData.administrator}**`)
+				.replace("{{adminAddress}}", `**${formData.adminAddress}**`)
+		}
+
+		// Add Smart Intercom information if enabled
+		if (includeSmartIntercomInfo) {
+			script += "\n\n" + smartIntercomInfo
+		}
+
+		setGeneratedScript(script)
+		setEditableScript(script)
+		setFileName(generateFileName())
+
+		toast({
+			title: "Скрипт сгенерирован",
+			description: "Скрипт успешно сгенерирован и готов к использованию",
+		})
+	}
+
+	const copyToClipboard = async () => {
+		try {
+			// Проверяем поддержку современного Clipboard API
+			if (navigator.clipboard && window.ClipboardItem) {
+				// Создаем HTML версию с форматированием
+				const htmlContent = editableScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
+
+				// Создаем plain text версию без markdown
+				const plainText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
+
+				// Создаем ClipboardItem с обоими форматами
+				const clipboardItem = new ClipboardItem({
+					"text/html": new Blob([htmlContent], { type: "text/html" }),
+					"text/plain": new Blob([plainText], { type: "text/plain" }),
+				})
+
+				await navigator.clipboard.write([clipboardItem])
+
+				toast({
+					title: "Скопировано с форматированием",
+					description: "Скрипт скопирован в буфер обмена с сохранением жирного текста",
+				})
+			} else {
+				// Fallback для старых браузеров - копируем только plain text
+				const cleanText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
+
+				const textArea = document.createElement("textarea")
+				textArea.value = cleanText
+				textArea.style.position = "fixed"
+				textArea.style.left = "-999999px"
+				textArea.style.top = "-999999px"
+				document.body.appendChild(textArea)
+
+				textArea.focus()
+				textArea.select()
+				document.execCommand("copy")
+				document.body.removeChild(textArea)
+
+				toast({
+					title: "Скопировано",
+					description: "Скрипт скопирован в буфер обмена (без форматирования - браузер не поддерживает)",
+				})
+			}
+		} catch (error) {
+			console.error("Clipboard error:", error)
+
+			// Еще один fallback
+			try {
+				const cleanText = editableScript.replace(/\*\*(.*?)\*\*/g, "$1")
+				await navigator.clipboard.writeText(cleanText)
+
+				toast({
+					title: "Скопировано",
+					description: "Скрипт скопирован в буфер обмена (только текст)",
+				})
+			} catch (fallbackError) {
+				toast({
+					title: "Ошибка копирования",
+					description: "Не удалось скопировать в буфер обмена. Выделите текст вручную и нажмите Ctrl+C.",
+					variant: "destructive",
+				})
+			}
+		}
+	}
+
+	const exportToWord = async () => {
+		try {
+			// Парсим markdown текст и создаем параграфы
+			const lines = editableScript.split("\n")
+			const paragraphs: Paragraph[] = []
+
+			for (const line of lines) {
+				if (line.trim() === "") {
+					// Пустая строка
+					paragraphs.push(new Paragraph({ children: [new TextRun("")] }))
+					continue
+				}
+
+				const children: TextRun[] = []
+				const currentText = line
+
+				// Обрабатываем жирный текст **text**
+				const boldRegex = /\*\*(.*?)\*\*/g
+				let lastIndex = 0
+				let match
+
+				while ((match = boldRegex.exec(line)) !== null) {
+					// Добавляем обычный текст перед жирным
+					if (match.index > lastIndex) {
+						const normalText = line.substring(lastIndex, match.index)
+						if (normalText) {
+							children.push(new TextRun({ text: normalText }))
+						}
+					}
+
+					// Добавляем жирный текст
+					children.push(
+						new TextRun({
+							text: match[1],
+							bold: true,
+						}),
+					)
+
+					lastIndex = match.index + match[0].length
+				}
+
+				// Добавляем оставшийся обычный текст
+				if (lastIndex < line.length) {
+					const remainingText = line.substring(lastIndex)
+					if (remainingText) {
+						children.push(new TextRun({ text: remainingText }))
+					}
+				}
+
+				// Если нет жирного текста, добавляем всю строку как обычный текст
+				if (children.length === 0) {
+					children.push(new TextRun({ text: line }))
+				}
+
+				paragraphs.push(new Paragraph({ children }))
+			}
+
+			// Создаем документ
+			const doc = new Document({
+				sections: [
+					{
+						properties: {},
+						children: paragraphs,
+					},
+				],
+				styles: {
+					default: {
+						document: {
+							run: {
+								font: "Times New Roman",
+								size: 24, // 12pt = 24 half-points
+							},
+						},
+					},
+				},
+			})
+
+			// Генерируем файл
+			const buffer = await Packer.toBuffer(doc)
+			const blob = new Blob([buffer], {
+				type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			})
+
+			const link = document.createElement("a")
+			link.href = URL.createObjectURL(blob)
+			link.download = `${fileName}.docx`
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+
+			toast({
+				title: "Экспорт выполнен",
+				description: "Скрипт успешно экспортирован в Word (.docx)",
+			})
+		} catch (error) {
+			console.error("Ошибка экспорта:", error)
+			toast({
+				title: "Ошибка экспорта",
+				description: "Не удалось создать Word документ. Попробуйте еще раз.",
+				variant: "destructive",
+			})
+		}
+	}
+
+	const createGoogleDoc = () => {
+		// Show dialog with instructions instead of trying to use clipboard
+		setShowGoogleDocDialog(true)
+	}
+
+	const openGoogleDoc = () => {
+		// Create a new Google Doc by opening a new tab with the Google Docs URL
+		const docTitle = encodeURIComponent(fileName)
+		const url = `https://docs.new?title=${docTitle}`
+
+		// Open a new tab with Google Docs
+		window.open(url, "_blank")
+		setShowGoogleDocDialog(false)
+	}
+
+	const printScript = () => {
+		// Create a printable version of the script
+		const printWindow = window.open("", "_blank")
+		if (printWindow) {
+			const htmlContent = editableScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>")
+
+			printWindow.document.write(`
         <html>
           <head>
             <title>Печать скрипта</title>
@@ -571,833 +577,833 @@ export default function ScriptGenerator() {
           </body>
         </html>
       `)
-      printWindow.document.close()
-    } else {
-      toast({
-        title: "Ошибка печати",
-        description: "Не удалось открыть окно печати. Проверьте настройки блокировки всплывающих окон.",
-        variant: "destructive",
-      })
-    }
-  }
+			printWindow.document.close()
+		} else {
+			toast({
+				title: "Ошибка печати",
+				description: "Не удалось открыть окно печати. Проверьте настройки блокировки всплывающих окон.",
+				variant: "destructive",
+			})
+		}
+	}
 
-  // Add function for copying the file name
-  const copyFileName = () => {
-    try {
-      navigator.clipboard.writeText(fileName)
-      toast({
-        title: "Скопировано",
-        description: "Имя файла скопировано в буфер обмена",
-      })
-    } catch (error) {
-      console.error("Clipboard error:", error)
-      toast({
-        title: "Ошибка копирования",
-        description: "Не удалось скопировать в буфер обмена",
-        variant: "destructive",
-      })
-    }
-  }
+	// Add function for copying the file name
+	const copyFileName = () => {
+		try {
+			navigator.clipboard.writeText(fileName)
+			toast({
+				title: "Скопировано",
+				description: "Имя файла скопировано в буфер обмена",
+			})
+		} catch (error) {
+			console.error("Clipboard error:", error)
+			toast({
+				title: "Ошибка копирования",
+				description: "Не удалось скопировать в буфер обмена",
+				variant: "destructive",
+			})
+		}
+	}
 
-  // Функция для добавления адреса в генератор сообщения в чат
-  const addToChat = () => {
-    if (!formData.address || !formData.district) {
-      toast({
-        title: "Недостаточно данных",
-        description: "Укажите адрес и округ для добавления в сообщение",
-        variant: "destructive",
-      })
-      return
-    }
+	// Функция для добавления адреса в генератор сообщения в чат
+	const addToChat = () => {
+		if (!formData.address || !formData.district) {
+			toast({
+				title: "Недостаточно данных",
+				description: "Укажите адрес и округ для добавления в сообщение",
+				variant: "destructive",
+			})
+			return
+		}
 
-    // Определяем, есть ли обходы в скрипте
-    const hasRounds = scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds"
+		// Определяем, есть ли обходы в скрипте
+		const hasRounds = scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds"
 
-    // Форматируем даты обходов для сообщения
-    let roundDatesFormatted = ""
-    if (hasRounds) {
-      if (formData.round1StartDate) {
-        const date1 = new Date(formData.round1StartDate)
-        const formattedDate1 = `${date1.getDate().toString().padStart(2, "0")}.${(date1.getMonth() + 1)
-          .toString()
-          .padStart(2, "0")}.${date1.getFullYear()}`
-        roundDatesFormatted = `${formattedDate1} ${formData.round1StartTime}-${formData.round1EndTime}`
+		// Форматируем даты обходов для сообщения
+		let roundDatesFormatted = ""
+		if (hasRounds) {
+			if (formData.round1StartDate) {
+				const date1 = new Date(formData.round1StartDate)
+				const formattedDate1 = `${date1.getDate().toString().padStart(2, "0")}.${(date1.getMonth() + 1)
+					.toString()
+					.padStart(2, "0")}.${date1.getFullYear()}`
+				roundDatesFormatted = `${formattedDate1} ${formData.round1StartTime}-${formData.round1EndTime}`
 
-        if (formData.round2StartDate) {
-          const date2 = new Date(formData.round2StartDate)
-          const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1)
-            .toString()
-            .padStart(2, "0")}.${date2.getFullYear()}`
-          roundDatesFormatted += `\n${formattedDate2} ${formData.round2StartTime}-${formData.round2EndTime}`
-        }
-      }
-    }
+				if (formData.round2StartDate) {
+					const date2 = new Date(formData.round2StartDate)
+					const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1)
+						.toString()
+						.padStart(2, "0")}.${date2.getFullYear()}`
+					roundDatesFormatted += `\n${formattedDate2} ${formData.round2StartTime}-${formData.round2EndTime}`
+				}
+			}
+		}
 
-    // Создаем объект с данными адреса
-    const addressItem: AddressItem = {
-      id: Date.now().toString(),
-      district: formData.district,
-      address: formData.address,
-      scriptType: scriptType === "ego-rounds" || scriptType === "ego-no-rounds" ? "ЕГО" : "не ЕГО",
-      hasRounds,
-      roundDates: roundDatesFormatted,
-    }
+		// Создаем объект с данными адреса
+		const addressItem: AddressItem = {
+			id: Date.now().toString(),
+			district: formData.district,
+			address: formData.address,
+			scriptType: scriptType === "ego-rounds" || scriptType === "ego-no-rounds" ? "ЕГО" : "не ЕГО",
+			hasRounds,
+			roundDates: roundDatesFormatted,
+		}
 
-    // Добавляем адрес в контекст
-    addAddressToChat(addressItem)
+		// Добавляем адрес в контекст
+		addAddressToChat(addressItem)
 
-    toast({
-      title: "Адрес добавлен",
-      description: "Адрес успешно добавлен в сообщение для чата",
-    })
-  }
+		toast({
+			title: "Адрес добавлен",
+			description: "Адрес успешно добавлен в сообщение для чата",
+		})
+	}
 
-  // Обработчик для вставки в поле даты завершения ОСС
-  const handleCompletionDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    const pastedText = e.clipboardData.getData("text")
+	// Обработчик для вставки в поле даты завершения ОСС
+	const handleCompletionDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+		e.preventDefault()
+		const pastedText = e.clipboardData.getData("text")
 
-    // Проверяем, соответствует ли текст формату DD.MM.YYYY
-    const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
-    const match = pastedText.match(datePattern)
+		// Проверяем, соответствует ли текст формату DD.MM.YYYY
+		const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
+		const match = pastedText.match(datePattern)
 
-    if (match) {
-      // Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
-      const day = match[1]
-      const month = match[2]
-      const year = match[3]
-      const formattedDate = `${year}-${month}-${day}`
+		if (match) {
+			// Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
+			const day = match[1]
+			const month = match[2]
+			const year = match[3]
+			const formattedDate = `${year}-${month}-${day}`
 
-      setFormData((prev) => ({
-        ...prev,
-        completionDate: formattedDate,
-      }))
-    } else {
-      // Если не соответствует, пробуем распарсить с помощью parseCustomDate
-      const parsedDate = parseCustomDate(pastedText)
-      if (parsedDate) {
-        const formattedDate = parsedDate.toISOString().split("T")[0]
-        setFormData((prev) => ({
-          ...prev,
-          completionDate: formattedDate,
-        }))
-      }
-    }
-  }
+			setFormData((prev) => ({
+				...prev,
+				completionDate: formattedDate,
+			}))
+		} else {
+			// Если не соответствует, пробуем распарсить с помощью parseCustomDate
+			const parsedDate = parseCustomDate(pastedText)
+			if (parsedDate) {
+				const formattedDate = parsedDate.toISOString().split("T")[0]
+				setFormData((prev) => ({
+					...prev,
+					completionDate: formattedDate,
+				}))
+			}
+		}
+	}
 
-  // Обработчик для вставки в поле даты электронного голосования
-  const handleElectronicDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    const pastedText = e.clipboardData.getData("text")
+	// Обработчик для вставки в поле даты электронного голосования
+	const handleElectronicDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+		e.preventDefault()
+		const pastedText = e.clipboardData.getData("text")
 
-    // Проверяем, соответствует ли текст формату DD.MM.YYYY
-    const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
-    const match = pastedText.match(datePattern)
+		// Проверяем, соответствует ли текст формату DD.MM.YYYY
+		const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
+		const match = pastedText.match(datePattern)
 
-    if (match) {
-      // Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
-      const day = match[1]
-      const month = match[2]
-      const year = match[3]
-      const formattedDate = `${year}-${month}-${day}`
+		if (match) {
+			// Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
+			const day = match[1]
+			const month = match[2]
+			const year = match[3]
+			const formattedDate = `${year}-${month}-${day}`
 
-      setFormData((prev) => ({
-        ...prev,
-        electronicDate: formattedDate,
-        electronicDateText: formatDate(formattedDate),
-      }))
-    } else {
-      // Если не соответствует, пробуем распарсить с помощью parseCustomDate
-      const parsedDate = parseCustomDate(pastedText)
-      if (parsedDate) {
-        const formattedDate = parsedDate.toISOString().split("T")[0]
-        setFormData((prev) => ({
-          ...prev,
-          electronicDate: formattedDate,
-          electronicDateText: formatDate(formattedDate),
-        }))
-      }
-    }
-  }
+			setFormData((prev) => ({
+				...prev,
+				electronicDate: formattedDate,
+				electronicDateText: formatDate(formattedDate),
+			}))
+		} else {
+			// Если не соответствует, пробуем распарсить с помощью parseCustomDate
+			const parsedDate = parseCustomDate(pastedText)
+			if (parsedDate) {
+				const formattedDate = parsedDate.toISOString().split("T")[0]
+				setFormData((prev) => ({
+					...prev,
+					electronicDate: formattedDate,
+					electronicDateText: formatDate(formattedDate),
+				}))
+			}
+		}
+	}
 
-  // Обработчик для вставки в поля дат обходов
-  const handleRoundDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, fieldName: string) => {
-    e.preventDefault()
-    const pastedText = e.clipboardData.getData("text")
+	// Обработчик для вставки в поля дат обходов
+	const handleRoundDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, fieldName: string) => {
+		e.preventDefault()
+		const pastedText = e.clipboardData.getData("text")
 
-    // Проверяем, соответствует ли текст формату DD.MM.YYYY
-    const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
-    const match = pastedText.match(datePattern)
+		// Проверяем, соответствует ли текст формату DD.MM.YYYY
+		const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
+		const match = pastedText.match(datePattern)
 
-    if (match) {
-      // Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
-      const day = match[1]
-      const month = match[2]
-      const year = match[3]
-      const formattedDate = `${year}-${month}-${day}`
+		if (match) {
+			// Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
+			const day = match[1]
+			const month = match[2]
+			const year = match[3]
+			const formattedDate = `${year}-${month}-${day}`
 
-      setFormData((prev) => ({
-        ...prev,
-        [fieldName]: formattedDate,
-        [`${fieldName}Text`]: formatDate(formattedDate),
-      }))
-    } else {
-      // Если не соответствует, пробуем распарсить с помощью parseCustomDate
-      const parsedDate = parseCustomDate(pastedText)
-      if (parsedDate) {
-        const formattedDate = parsedDate.toISOString().split("T")[0]
-        setFormData((prev) => ({
-          ...prev,
-          [fieldName]: formattedDate,
-          [`${fieldName}Text`]: formatDate(formattedDate),
-        }))
-      }
-    }
-  }
+			setFormData((prev) => ({
+				...prev,
+				[fieldName]: formattedDate,
+				[`${fieldName}Text`]: formatDate(formattedDate),
+			}))
+		} else {
+			// Если не соответствует, пробуем распарсить с помощью parseCustomDate
+			const parsedDate = parseCustomDate(pastedText)
+			if (parsedDate) {
+				const formattedDate = parsedDate.toISOString().split("T")[0]
+				setFormData((prev) => ({
+					...prev,
+					[fieldName]: formattedDate,
+					[`${fieldName}Text`]: formatDate(formattedDate),
+				}))
+			}
+		}
+	}
 
-  // Обработчик для вставки в поле даты бумажного голосования
-  const handlePaperDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    const pastedText = e.clipboardData.getData("text")
+	// Обработчик для вставки в поле даты бумажного голосования
+	const handlePaperDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+		e.preventDefault()
+		const pastedText = e.clipboardData.getData("text")
 
-    // Проверяем, соответствует ли текст формату DD.MM.YYYY
-    const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
-    const match = pastedText.match(datePattern)
+		// Проверяем, соответствует ли текст формату DD.MM.YYYY
+		const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
+		const match = pastedText.match(datePattern)
 
-    if (match) {
-      // Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
-      const day = match[1]
-      const month = match[2]
-      const year = match[3]
-      const formattedDate = `${year}-${month}-${day}`
+		if (match) {
+			// Если соответствует, преобразуем в формат YYYY-MM-DD для input type="date"
+			const day = match[1]
+			const month = match[2]
+			const year = match[3]
+			const formattedDate = `${year}-${month}-${day}`
 
-      setFormData((prev) => ({
-        ...prev,
-        paperDate: formattedDate,
-        paperDateText: formatDate(formattedDate),
-      }))
-    } else {
-      // Если не соответствует, пробуем распарсить с помощью parseCustomDate
-      const parsedDate = parseCustomDate(pastedText)
-      if (parsedDate) {
-        const formattedDate = parsedDate.toISOString().split("T")[0]
-        setFormData((prev) => ({
-          ...prev,
-          paperDate: formattedDate,
-          paperDateText: formatDate(formattedDate),
-        }))
-      }
-    }
-  }
+			setFormData((prev) => ({
+				...prev,
+				paperDate: formattedDate,
+				paperDateText: formatDate(formattedDate),
+			}))
+		} else {
+			// Если не соответствует, пробуем распарсить с помощью parseCustomDate
+			const parsedDate = parseCustomDate(pastedText)
+			if (parsedDate) {
+				const formattedDate = parsedDate.toISOString().split("T")[0]
+				setFormData((prev) => ({
+					...prev,
+					paperDate: formattedDate,
+					paperDateText: formatDate(formattedDate),
+				}))
+			}
+		}
+	}
 
-  // Render different form fields based on script type
-  const renderScriptSpecificFields = () => {
-    const needsRounds = scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds"
-    const needsAdmin = scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds"
+	// Render different form fields based on script type
+	const renderScriptSpecificFields = () => {
+		const needsRounds = scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds"
+		const needsAdmin = scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds"
 
-    return (
-      <div className="space-y-4">
-        {needsAdmin && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="administrator">Администратор</Label>
-              <Input
-                id="administrator"
-                name="administrator"
-                placeholder="Например: ГБУ 'Жилищник ГОЛОВИНСКОГО РАЙОНА'"
-                value={formData.administrator}
-                onChange={handleInputChange}
-              />
-            </div>
+		return (
+			<div className="space-y-4">
+				{needsAdmin && (
+					<>
+						<div className="space-y-2">
+							<Label htmlFor="administrator">Администратор</Label>
+							<Input
+								id="administrator"
+								name="administrator"
+								placeholder="Например: ГБУ 'Жилищник ГОЛОВИНСКОГО РАЙОНА'"
+								value={formData.administrator}
+								onChange={handleInputChange}
+							/>
+						</div>
 
-            <div className="space-y-2">
-              <Label htmlFor="adminAddress">Адрес и время приема</Label>
-              <Textarea
-                id="adminAddress"
-                name="adminAddress"
-                placeholder="Например: г. Москва, ул. Онежская, д.2, к.3, каб. 8, пн. - чт. 08-00 - 17-00, пт. 08-00 - 15-45, обед 12-00 - 12-45, В рабочие дни, решения передаются лично в руки."
-                value={formData.adminAddress}
-                onChange={handleInputChange}
-                rows={3}
-              />
-            </div>
-          </>
-        )}
+						<div className="space-y-2">
+							<Label htmlFor="adminAddress">Адрес и время приема</Label>
+							<Textarea
+								id="adminAddress"
+								name="adminAddress"
+								placeholder="Например: г. Москва, ул. Онежская, д.2, к.3, каб. 8, пн. - чт. 08-00 - 17-00, пт. 08-00 - 15-45, обед 12-00 - 12-45, В рабочие дни, решения передаются лично в руки."
+								value={formData.adminAddress}
+								onChange={handleInputChange}
+								rows={3}
+							/>
+						</div>
+					</>
+				)}
 
-        {needsRounds && (
-          <div>
-            <Label>Даты поквартирных обходов</Label>
+				{needsRounds && (
+					<div>
+						<Label>Даты поквартирных обходов</Label>
 
-            {/* Первый обход */}
-            <div className="border p-4 rounded-md mt-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-              <Label className="text-base font-medium">Первый обход</Label>
-              {useManualInput ? (
-                <div className="mt-2 space-y-2">
-                  <Label htmlFor="round1StartDateText" className="text-sm text-muted-foreground">
-                    Дата и время обхода
-                  </Label>
-                  <div className="flex items-center">
-                    <Input
-                      id="round1StartDateText"
-                      name="round1StartDateText"
-                      placeholder="Например: 19 мая 2025"
-                      value={formData.round1StartDateText}
-                      onChange={handleTextInputChange}
-                      className="w-1/2"
-                    />
-                    <span className="mx-2 text-sm">с</span>
-                    <Input
-                      id="round1StartTimeText"
-                      name="round1StartTimeText"
-                      placeholder="18:30"
-                      value={formData.round1StartTimeText}
-                      onChange={handleTextInputChange}
-                      className="w-1/5"
-                    />
-                    <span className="mx-2 text-sm">до</span>
-                    <Input
-                      id="round1EndTimeText"
-                      name="round1EndTimeText"
-                      placeholder="20:30"
-                      value={formData.round1EndTimeText}
-                      onChange={handleTextInputChange}
-                      className="w-1/5"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  <Label htmlFor="round1StartDate" className="text-sm text-muted-foreground">
-                    Дата обхода
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="round1StartDate"
-                      name="round1StartDate"
-                      type="date"
-                      value={formData.round1StartDate}
-                      onChange={handleInputChange}
-                      onPaste={(e) => handleRoundDatePaste(e, "round1StartDate")}
-                      className="pr-10"
-                    />
-                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  </div>
+						{/* Первый обход */}
+						<div className="border p-4 rounded-md mt-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+							<Label className="text-base font-medium">Первый обход</Label>
+							{useManualInput ? (
+								<div className="mt-2 space-y-2">
+									<Label htmlFor="round1StartDateText" className="text-sm text-muted-foreground">
+										Дата и время обхода
+									</Label>
+									<div className="flex items-center">
+										<Input
+											id="round1StartDateText"
+											name="round1StartDateText"
+											placeholder="Например: 19 мая 2025"
+											value={formData.round1StartDateText}
+											onChange={handleTextInputChange}
+											className="w-1/2"
+										/>
+										<span className="mx-2 text-sm">с</span>
+										<Input
+											id="round1StartTimeText"
+											name="round1StartTimeText"
+											placeholder="18:30"
+											value={formData.round1StartTimeText}
+											onChange={handleTextInputChange}
+											className="w-1/5"
+										/>
+										<span className="mx-2 text-sm">до</span>
+										<Input
+											id="round1EndTimeText"
+											name="round1EndTimeText"
+											placeholder="20:30"
+											value={formData.round1EndTimeText}
+											onChange={handleTextInputChange}
+											className="w-1/5"
+										/>
+									</div>
+								</div>
+							) : (
+								<div className="mt-2 space-y-2">
+									<Label htmlFor="round1StartDate" className="text-sm text-muted-foreground">
+										Дата обхода
+									</Label>
+									<div className="relative">
+										<Input
+											id="round1StartDate"
+											name="round1StartDate"
+											type="date"
+											value={formData.round1StartDate}
+											onChange={handleInputChange}
+											onPaste={(e) => handleRoundDatePaste(e, "round1StartDate")}
+											className="pr-10"
+										/>
+										<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+									</div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="round1StartTime" className="text-sm text-muted-foreground">
-                        Время начала
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="round1StartTime"
-                          name="round1StartTime"
-                          type="time"
-                          value={formData.round1StartTime}
-                          onChange={handleInputChange}
-                          className="pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="round1EndTime" className="text-sm text-muted-foreground">
-                        Время окончания
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="round1EndTime"
-                          name="round1EndTime"
-                          type="time"
-                          value={formData.round1EndTime}
-                          onChange={handleInputChange}
-                          className="pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<Label htmlFor="round1StartTime" className="text-sm text-muted-foreground">
+												Время начала
+											</Label>
+											<div className="relative">
+												<Input
+													id="round1StartTime"
+													name="round1StartTime"
+													type="time"
+													value={formData.round1StartTime}
+													onChange={handleInputChange}
+													className="pr-10"
+												/>
+												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+											</div>
+										</div>
+										<div>
+											<Label htmlFor="round1EndTime" className="text-sm text-muted-foreground">
+												Время окончания
+											</Label>
+											<div className="relative">
+												<Input
+													id="round1EndTime"
+													name="round1EndTime"
+													type="time"
+													value={formData.round1EndTime}
+													onChange={handleInputChange}
+													className="pr-10"
+												/>
+												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+						</div>
 
-            {/* Второй обход */}
-            <div className="border p-4 rounded-md mt-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-              <Label className="text-base font-medium">Второй обход</Label>
-              {useManualInput ? (
-                <div className="mt-2 space-y-2">
-                  <Label htmlFor="round2StartDateText" className="text-sm text-muted-foreground">
-                    Дата и время обхода
-                  </Label>
-                  <div className="flex items-center">
-                    <Input
-                      id="round2StartDateText"
-                      name="round2StartDateText"
-                      placeholder="Например: 20 мая 2025"
-                      value={formData.round2StartDateText}
-                      onChange={handleTextInputChange}
-                      className="w-1/2"
-                    />
-                    <span className="mx-2 text-sm">с</span>
-                    <Input
-                      id="round2StartTimeText"
-                      name="round2StartTimeText"
-                      placeholder="18:30"
-                      value={formData.round2StartTimeText}
-                      onChange={handleTextInputChange}
-                      className="w-1/5"
-                    />
-                    <span className="mx-2 text-sm">до</span>
-                    <Input
-                      id="round2EndTimeText"
-                      name="round2EndTimeText"
-                      placeholder="20:30"
-                      value={formData.round2EndTimeText}
-                      onChange={handleTextInputChange}
-                      className="w-1/5"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-2 space-y-2">
-                  <Label htmlFor="round2StartDate" className="text-sm text-muted-foreground">
-                    Дата обхода
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="round2StartDate"
-                      name="round2StartDate"
-                      type="date"
-                      value={formData.round2StartDate}
-                      onChange={handleInputChange}
-                      onPaste={(e) => handleRoundDatePaste(e, "round2StartDate")}
-                      className="pr-10"
-                    />
-                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  </div>
+						{/* Второй обход */}
+						<div className="border p-4 rounded-md mt-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+							<Label className="text-base font-medium">Второй обход</Label>
+							{useManualInput ? (
+								<div className="mt-2 space-y-2">
+									<Label htmlFor="round2StartDateText" className="text-sm text-muted-foreground">
+										Дата и время обхода
+									</Label>
+									<div className="flex items-center">
+										<Input
+											id="round2StartDateText"
+											name="round2StartDateText"
+											placeholder="Например: 20 мая 2025"
+											value={formData.round2StartDateText}
+											onChange={handleTextInputChange}
+											className="w-1/2"
+										/>
+										<span className="mx-2 text-sm">с</span>
+										<Input
+											id="round2StartTimeText"
+											name="round2StartTimeText"
+											placeholder="18:30"
+											value={formData.round2StartTimeText}
+											onChange={handleTextInputChange}
+											className="w-1/5"
+										/>
+										<span className="mx-2 text-sm">до</span>
+										<Input
+											id="round2EndTimeText"
+											name="round2EndTimeText"
+											placeholder="20:30"
+											value={formData.round2EndTimeText}
+											onChange={handleTextInputChange}
+											className="w-1/5"
+										/>
+									</div>
+								</div>
+							) : (
+								<div className="mt-2 space-y-2">
+									<Label htmlFor="round2StartDate" className="text-sm text-muted-foreground">
+										Дата обхода
+									</Label>
+									<div className="relative">
+										<Input
+											id="round2StartDate"
+											name="round2StartDate"
+											type="date"
+											value={formData.round2StartDate}
+											onChange={handleInputChange}
+											onPaste={(e) => handleRoundDatePaste(e, "round2StartDate")}
+											className="pr-10"
+										/>
+										<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+									</div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="round2StartTime" className="text-sm text-muted-foreground">
-                        Время начала
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="round2StartTime"
-                          name="round2StartTime"
-                          type="time"
-                          value={formData.round2StartTime}
-                          onChange={handleInputChange}
-                          className="pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="round2EndTime" className="text-sm text-muted-foreground">
-                        Время окончания
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="round2EndTime"
-                          name="round2EndTime"
-                          type="time"
-                          value={formData.round2EndTime}
-                          onChange={handleInputChange}
-                          className="pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<Label htmlFor="round2StartTime" className="text-sm text-muted-foreground">
+												Время начала
+											</Label>
+											<div className="relative">
+												<Input
+													id="round2StartTime"
+													name="round2StartTime"
+													type="time"
+													value={formData.round2StartTime}
+													onChange={handleInputChange}
+													className="pr-10"
+												/>
+												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+											</div>
+										</div>
+										<div>
+											<Label htmlFor="round2EndTime" className="text-sm text-muted-foreground">
+												Время окончания
+											</Label>
+											<div className="relative">
+												<Input
+													id="round2EndTime"
+													name="round2EndTime"
+													type="time"
+													value={formData.round2EndTime}
+													onChange={handleInputChange}
+													className="pr-10"
+												/>
+												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+						</div>
+					</div>
+				)}
+			</div>
+		)
+	}
 
-  return (
-    <div className="space-y-6">
-      <Card className="glass-card card-hover shadow-lg">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <CardTitle>Генератор скриптов</CardTitle>
-          </div>
-          <CardDescription>Выберите тип скрипта и заполните необходимые поля</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between mb-4 p-3 bg-secondary/50 dark:bg-secondary/30 rounded-lg">
-            <div className="flex items-center space-x-2">
-              <Switch id="input-mode" checked={useManualInput} onCheckedChange={toggleInputMode} />
-              <Label htmlFor="input-mode">Ручной ввод дат и времени</Label>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {useManualInput ? "Ввод текстом" : "Выбор из календаря"}
-            </div>
-          </div>
+	return (
+		<div className="space-y-6">
+			<Card className="glass-card card-hover shadow-lg">
+				<CardHeader>
+					<div className="flex items-center gap-2">
+						<Sparkles className="h-5 w-5 text-primary" />
+						<CardTitle>Генератор скриптов</CardTitle>
+					</div>
+					<CardDescription>Выберите тип скрипта и заполните необходимые поля</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<div className="flex items-center justify-between mb-4 p-3 bg-secondary/50 dark:bg-secondary/30 rounded-lg">
+						<div className="flex items-center space-x-2">
+							<Switch id="input-mode" checked={useManualInput} onCheckedChange={toggleInputMode} />
+							<Label htmlFor="input-mode">Ручной ввод дат и времени</Label>
+						</div>
+						<div className="text-sm text-muted-foreground">
+							{useManualInput ? "Ввод текстом" : "Выбор из календаря"}
+						</div>
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="scriptType">Тип скрипта</Label>
-            <Select value={scriptType} onValueChange={handleSelectChange}>
-              <SelectTrigger id="scriptType" className="bg-white dark:bg-gray-800">
-                <SelectValue placeholder="Выберите тип скрипта" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ego-rounds">ЕГО с обходами</SelectItem>
-                <SelectItem value="ego-no-rounds">ЕГО без обходов</SelectItem>
-                <SelectItem value="not-ego-no-rounds">не ЕГО без обходов</SelectItem>
-                <SelectItem value="not-ego-with-rounds">не ЕГО с обходами</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="scriptType">Тип скрипта</Label>
+						<Select value={scriptType} onValueChange={handleSelectChange}>
+							<SelectTrigger id="scriptType" className="bg-white dark:bg-gray-800">
+								<SelectValue placeholder="Выберите тип скрипта" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="ego-rounds">ЕГО с обходами</SelectItem>
+								<SelectItem value="ego-no-rounds">ЕГО без обходов</SelectItem>
+								<SelectItem value="not-ego-no-rounds">не ЕГО без обходов</SelectItem>
+								<SelectItem value="not-ego-with-rounds">не ЕГО с обходами</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="district">Округ</Label>
-            <Select value={formData.district} onValueChange={handleDistrictChange}>
-              <SelectTrigger id="district" className="bg-white dark:bg-gray-800">
-                <SelectValue placeholder="Выберите округ" />
-              </SelectTrigger>
-              <SelectContent>
-                {DISTRICTS.map((district) => (
-                  <SelectItem key={district} value={district}>
-                    {district}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="district">Округ</Label>
+						<Select value={formData.district} onValueChange={handleDistrictChange}>
+							<SelectTrigger id="district" className="bg-white dark:bg-gray-800">
+								<SelectValue placeholder="Выберите округ" />
+							</SelectTrigger>
+							<SelectContent>
+								{DISTRICTS.map((district) => (
+									<SelectItem key={district} value={district}>
+										{district}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Адрес дома</Label>
-            <Input
-              id="address"
-              name="address"
-              placeholder="Например: Переулок 3-й Лихачёвский Дом 3 Корпус 1"
-              value={formData.address}
-              onChange={handleInputChange}
-              className="bg-white dark:bg-gray-800"
-            />
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="address">Адрес дома</Label>
+						<Input
+							id="address"
+							name="address"
+							placeholder="Например: Переулок 3-й Лихачёвский Дом 3 Корпус 1"
+							value={formData.address}
+							onChange={handleInputChange}
+							className="bg-white dark:bg-gray-800"
+						/>
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="topic">Тематика собрания (по вопросу ....)</Label>
-            <Input
-              id="topic"
-              name="topic"
-              placeholder="Например: установки Умного домофона"
-              value={formData.topic}
-              onChange={handleInputChange}
-              className="bg-white dark:bg-gray-800"
-            />
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="topic">Тематика собрания (по вопросу ....)</Label>
+						<Input
+							id="topic"
+							name="topic"
+							placeholder="Например: установки Умного домофона"
+							value={formData.topic}
+							onChange={handleInputChange}
+							className="bg-white dark:bg-gray-800"
+						/>
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="completionDate">Дата завершения ОСС *</Label>
-            {useManualInput ? (
-              <Input
-                id="completionDateText"
-                name="completionDateText"
-                placeholder="Например: 26 мая 2025"
-                value={
-                  formData.completionDateText || (formData.completionDate ? formatDate(formData.completionDate) : "")
-                }
-                onChange={handleTextInputChange}
-                className="bg-white dark:bg-gray-800"
-              />
-            ) : (
-              <div className="relative">
-                <Input
-                  id="completionDate"
-                  name="completionDate"
-                  type="date"
-                  value={formData.completionDate}
-                  onChange={handleInputChange}
-                  onPaste={handleCompletionDatePaste}
-                  className="pr-10 bg-white dark:bg-gray-800"
-                />
-                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              </div>
-            )}
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="completionDate">Дата завершения ОСС *</Label>
+						{useManualInput ? (
+							<Input
+								id="completionDateText"
+								name="completionDateText"
+								placeholder="Например: 26 мая 2025"
+								value={
+									formData.completionDateText || (formData.completionDate ? formatDate(formData.completionDate) : "")
+								}
+								onChange={handleTextInputChange}
+								className="bg-white dark:bg-gray-800"
+							/>
+						) : (
+							<div className="relative">
+								<Input
+									id="completionDate"
+									name="completionDate"
+									type="date"
+									value={formData.completionDate}
+									onChange={handleInputChange}
+									onPaste={handleCompletionDatePaste}
+									className="pr-10 bg-white dark:bg-gray-800"
+								/>
+								<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+							</div>
+						)}
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="paperDate">
-              Дата окончания бумажного голосования {!useManualInput && "(автоматически)"}
-            </Label>
-            {useManualInput ? (
-              <div className="flex items-center">
-                <Input
-                  id="paperDateText"
-                  name="paperDateText"
-                  placeholder="Например: 24 мая 2025"
-                  value={formData.paperDateText}
-                  onChange={handleTextInputChange}
-                  className="w-2/3 bg-white dark:bg-gray-800"
-                />
-                <Input
-                  id="paperTimeText"
-                  name="paperTimeText"
-                  placeholder="09:00"
-                  value={formData.paperTimeText}
-                  onChange={handleTextInputChange}
-                  className="w-1/3 ml-2 bg-white dark:bg-gray-800"
-                />
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <div className="relative w-2/3">
-                  <Input
-                    id="paperDate"
-                    name="paperDate"
-                    type="date"
-                    value={formData.paperDate}
-                    onChange={handleInputChange}
-                    onPaste={handlePaperDatePaste}
-                    className="pr-10 bg-gray-100 dark:bg-gray-700"
-                    disabled
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
-                <div className="relative w-1/3">
-                  <Input
-                    id="paperTime"
-                    name="paperTime"
-                    type="time"
-                    value={formData.paperTime}
-                    onChange={handleInputChange}
-                    className="pr-10 bg-gray-100 dark:bg-gray-700"
-                    disabled
-                  />
-                  <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
-              </div>
-            )}
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="paperDate">
+							Дата окончания бумажного голосования {!useManualInput && "(автоматически)"}
+						</Label>
+						{useManualInput ? (
+							<div className="flex items-center">
+								<Input
+									id="paperDateText"
+									name="paperDateText"
+									placeholder="Например: 24 мая 2025"
+									value={formData.paperDateText}
+									onChange={handleTextInputChange}
+									className="w-2/3 bg-white dark:bg-gray-800"
+								/>
+								<Input
+									id="paperTimeText"
+									name="paperTimeText"
+									placeholder="09:00"
+									value={formData.paperTimeText}
+									onChange={handleTextInputChange}
+									className="w-1/3 ml-2 bg-white dark:bg-gray-800"
+								/>
+							</div>
+						) : (
+							<div className="flex gap-2">
+								<div className="relative w-2/3">
+									<Input
+										id="paperDate"
+										name="paperDate"
+										type="date"
+										value={formData.paperDate}
+										onChange={handleInputChange}
+										onPaste={handlePaperDatePaste}
+										className="pr-10 bg-gray-100 dark:bg-gray-700"
+										disabled
+									/>
+									<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+								</div>
+								<div className="relative w-1/3">
+									<Input
+										id="paperTime"
+										name="paperTime"
+										type="time"
+										value={formData.paperTime}
+										onChange={handleInputChange}
+										className="pr-10 bg-gray-100 dark:bg-gray-700"
+										disabled
+									/>
+									<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+								</div>
+							</div>
+						)}
+					</div>
 
-          <div className="space-y-2">
-            <Label htmlFor="electronicDate">
-              Дата окончания электронного голосования {!useManualInput && "(автоматически)"}
-            </Label>
-            {useManualInput ? (
-              <div className="flex items-center">
-                <Input
-                  id="electronicDateText"
-                  name="electronicDateText"
-                  placeholder="Например: 26 мая 2025"
-                  value={formData.electronicDateText}
-                  onChange={handleTextInputChange}
-                  className="w-2/3 bg-white dark:bg-gray-800"
-                />
-                <Input
-                  id="electronicTimeText"
-                  name="electronicTimeText"
-                  placeholder="09:00"
-                  value={formData.electronicTimeText}
-                  onChange={handleTextInputChange}
-                  className="w-1/3 ml-2 bg-white dark:bg-gray-800"
-                />
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <div className="relative w-2/3">
-                  <Input
-                    id="electronicDate"
-                    name="electronicDate"
-                    type="date"
-                    value={formData.electronicDate}
-                    onChange={handleInputChange}
-                    onPaste={handleElectronicDatePaste}
-                    className="pr-10 bg-gray-100 dark:bg-gray-700"
-                    disabled
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
-                <div className="relative w-1/3">
-                  <Input
-                    id="electronicTime"
-                    name="electronicTime"
-                    type="time"
-                    value={formData.electronicTime}
-                    onChange={handleInputChange}
-                    className="pr-10 bg-gray-100 dark:bg-gray-700"
-                    disabled
-                  />
-                  <Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                </div>
-              </div>
-            )}
-          </div>
+					<div className="space-y-2">
+						<Label htmlFor="electronicDate">
+							Дата окончания электронного голосования {!useManualInput && "(автоматически)"}
+						</Label>
+						{useManualInput ? (
+							<div className="flex items-center">
+								<Input
+									id="electronicDateText"
+									name="electronicDateText"
+									placeholder="Например: 26 мая 2025"
+									value={formData.electronicDateText}
+									onChange={handleTextInputChange}
+									className="w-2/3 bg-white dark:bg-gray-800"
+								/>
+								<Input
+									id="electronicTimeText"
+									name="electronicTimeText"
+									placeholder="09:00"
+									value={formData.electronicTimeText}
+									onChange={handleTextInputChange}
+									className="w-1/3 ml-2 bg-white dark:bg-gray-800"
+								/>
+							</div>
+						) : (
+							<div className="flex gap-2">
+								<div className="relative w-2/3">
+									<Input
+										id="electronicDate"
+										name="electronicDate"
+										type="date"
+										value={formData.electronicDate}
+										onChange={handleInputChange}
+										onPaste={handleElectronicDatePaste}
+										className="pr-10 bg-gray-100 dark:bg-gray-700"
+										disabled
+									/>
+									<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+								</div>
+								<div className="relative w-1/3">
+									<Input
+										id="electronicTime"
+										name="electronicTime"
+										type="time"
+										value={formData.electronicTime}
+										onChange={handleInputChange}
+										className="pr-10 bg-gray-100 dark:bg-gray-700"
+										disabled
+									/>
+									<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+								</div>
+							</div>
+						)}
+					</div>
 
-          {/* Render script-specific fields */}
-          {renderScriptSpecificFields()}
+					{/* Render script-specific fields */}
+					{renderScriptSpecificFields()}
 
-          {/* Smart Intercom toggle */}
-          <div className="border p-4 rounded-md mt-6 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="smart-intercom"
-                  checked={includeSmartIntercomInfo}
-                  onCheckedChange={toggleSmartIntercomInfo}
-                />
-                <Label htmlFor="smart-intercom" className="font-medium">
-                  Добавить информацию об Умном домофоне?
-                </Label>
-              </div>
-            </div>
-            {includeSmartIntercomInfo && (
-              <div className="mt-4 text-sm text-muted-foreground bg-muted p-3 rounded-md">
-                <p>
-                  В конец скрипта будет добавлена информация об Умном домофоне с ответами на часто задаваемые вопросы.
-                </p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={resetForm}>
-            Сбросить
-          </Button>
-          <Button onClick={generateScript} className="gradient-bg border-0">
-            Сгенерировать скрипт
-          </Button>
-        </CardFooter>
-      </Card>
+					{/* Smart Intercom toggle */}
+					<div className="border p-4 rounded-md mt-6 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center space-x-2">
+								<Switch
+									id="smart-intercom"
+									checked={includeSmartIntercomInfo}
+									onCheckedChange={toggleSmartIntercomInfo}
+								/>
+								<Label htmlFor="smart-intercom" className="font-medium">
+									Добавить информацию об Умном домофоне?
+								</Label>
+							</div>
+						</div>
+						{includeSmartIntercomInfo && (
+							<div className="mt-4 text-sm text-muted-foreground bg-muted p-3 rounded-md">
+								<p>
+									В конец скрипта будет добавлена информация об Умном домофоне с ответами на часто задаваемые вопросы.
+								</p>
+							</div>
+						)}
+					</div>
+				</CardContent>
+				<CardFooter className="flex justify-between">
+					<Button variant="outline" onClick={resetForm}>
+						Сбросить
+					</Button>
+					<Button onClick={generateScript} className="gradient-bg border-0">
+						Сгенерировать скрипт
+					</Button>
+				</CardFooter>
+			</Card>
 
-      {generatedScript && (
-        <Card className="glass-card card-hover shadow-lg animate-fade-in">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Сгенерированный скрипт</CardTitle>
-              <CardDescription>Готовый скрипт с заполненными данными</CardDescription>
-              <div className="mt-2 flex items-center">
-                <div className="text-sm bg-muted p-2 rounded-l-md overflow-hidden text-ellipsis whitespace-nowrap max-w-[300px]">
-                  {fileName}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-l-none"
-                  onClick={copyFileName}
-                  title="Копировать имя файла"
-                >
-                  <ClipboardCopy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={addToChat}
-                title="Добавить в сообщение для чата"
-                className="rounded-full"
-              >
-                <MessageSquarePlus className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyToClipboard}
-                title="Копировать в буфер обмена"
-                className="rounded-full"
-              >
-                <ClipboardCopy className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={exportToWord}
-                title="Экспорт в Word"
-                className="rounded-full"
-              >
-                <FileDown className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={createGoogleDoc}
-                title="Создать Google Документ"
-                className="rounded-full"
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={printScript}
-                title="Печать скрипта"
-                className="rounded-full"
-              >
-                <Printer className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="preview">
-              <TabsList className="mb-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-1.5 rounded-lg shadow-sm">
-                <TabsTrigger value="preview" className="rounded-md px-4 py-2 relative">
-                  Предпросмотр
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
-                </TabsTrigger>
-                <TabsTrigger value="text" className="rounded-md px-4 py-2 relative">
-                  Текст
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="preview">
-                <div
-                  className="whitespace-pre-line bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-md max-h-[500px] overflow-y-auto"
-                  dangerouslySetInnerHTML={{
-                    __html: generatedScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="text">
-                <div className="space-y-4">
-                  <Textarea
-                    className="min-h-[500px] font-mono text-sm bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm"
-                    value={editableScript}
-                    onChange={handleScriptEdit}
-                  />
-                  <div className="flex justify-end">
-                    <Button onClick={applyScriptChanges} className="gradient-bg border-0">
-                      Применить изменения
-                    </Button>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      )}
+			{generatedScript && (
+				<Card className="glass-card card-hover shadow-lg animate-fade-in">
+					<CardHeader className="flex flex-row items-center justify-between">
+						<div>
+							<CardTitle>Сгенерированный скрипт</CardTitle>
+							<CardDescription>Готовый скрипт с заполненными данными</CardDescription>
+							<div className="mt-2 flex items-center">
+								<div className="text-sm bg-muted p-2 rounded-l-md overflow-hidden text-ellipsis whitespace-nowrap max-w-[300px]">
+									{fileName}
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									className="h-8 rounded-l-none"
+									onClick={copyFileName}
+									title="Копировать имя файла"
+								>
+									<ClipboardCopy className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+						</div>
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={addToChat}
+								title="Добавить в сообщение для чата"
+								className="rounded-full"
+							>
+								<MessageSquarePlus className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={copyToClipboard}
+								title="Копировать в буфер обмена"
+								className="rounded-full"
+							>
+								<ClipboardCopy className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={exportToWord}
+								title="Экспорт в Word"
+								className="rounded-full"
+							>
+								<FileDown className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={createGoogleDoc}
+								title="Создать Google Документ"
+								className="rounded-full"
+							>
+								<FileText className="h-4 w-4" />
+							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={printScript}
+								title="Печать скрипта"
+								className="rounded-full"
+							>
+								<Printer className="h-4 w-4" />
+							</Button>
+						</div>
+					</CardHeader>
+					<CardContent>
+						<Tabs defaultValue="preview">
+							<TabsList className="mb-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-1.5 rounded-lg shadow-sm">
+								<TabsTrigger value="preview" className="rounded-md px-4 py-2 relative">
+									Предпросмотр
+									<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
+								</TabsTrigger>
+								<TabsTrigger value="text" className="rounded-md px-4 py-2 relative">
+									Текст
+									<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
+								</TabsTrigger>
+							</TabsList>
+							<TabsContent value="preview">
+								<div
+									className="whitespace-pre-line bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm p-4 rounded-md max-h-[500px] overflow-y-auto"
+									dangerouslySetInnerHTML={{
+										__html: generatedScript.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"),
+									}}
+								/>
+							</TabsContent>
+							<TabsContent value="text">
+								<div className="space-y-4">
+									<Textarea
+										className="min-h-[500px] font-mono text-sm bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm"
+										value={editableScript}
+										onChange={handleScriptEdit}
+									/>
+									<div className="flex justify-end">
+										<Button onClick={applyScriptChanges} className="gradient-bg border-0">
+											Применить изменения
+										</Button>
+									</div>
+								</div>
+							</TabsContent>
+						</Tabs>
+					</CardContent>
+				</Card>
+			)}
 
-      {/* Диалог с инструкциями для Google Docs */}
-      <Dialog open={showGoogleDocDialog} onOpenChange={setShowGoogleDocDialog}>
-        <DialogContent className="glass-card">
-          <DialogHeader>
-            <DialogTitle>Создание Google Документа</DialogTitle>
-            <DialogDescription>Для создания Google Документа со скриптом, выполните следующие шаги:</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <ol className="list-decimal list-inside space-y-2">
-              <li>Нажмите кнопку "Открыть Google Документ" ниже</li>
-              <li>В новой вкладке откроется пустой Google Документ</li>
-              <li>Вернитесь на эту страницу и нажмите кнопку "Копировать" над скриптом</li>
-              <li>Перейдите обратно в Google Документ и вставьте скопированный текст (Ctrl+V)</li>
-            </ol>
-          </div>
-          <DialogFooter>
-            <Button onClick={openGoogleDoc} className="gradient-bg border-0">
-              Открыть Google Документ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
+			{/* Диалог с инструкциями для Google Docs */}
+			<Dialog open={showGoogleDocDialog} onOpenChange={setShowGoogleDocDialog}>
+				<DialogContent className="glass-card">
+					<DialogHeader>
+						<DialogTitle>Создание Google Документа</DialogTitle>
+						<DialogDescription>Для создания Google Документа со скриптом, выполните следующие шаги:</DialogDescription>
+					</DialogHeader>
+					<div className="space-y-4">
+						<ol className="list-decimal list-inside space-y-2">
+							<li>Нажмите кнопку "Открыть Google Документ" ниже</li>
+							<li>В новой вкладке откроется пустой Google Документ</li>
+							<li>Вернитесь на эту страницу и нажмите кнопку "Копировать" над скриптом</li>
+							<li>Перейдите обратно в Google Документ и вставьте скопированный текст (Ctrl+V)</li>
+						</ol>
+					</div>
+					<DialogFooter>
+						<Button onClick={openGoogleDoc} className="gradient-bg border-0">
+							Открыть Google Документ
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</div>
+	)
 }

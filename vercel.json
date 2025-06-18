@@ -1,0 +1,14 @@
+{
+	"buildCommand": "npm run build",
+	"devCommand": "npm run dev",
+	"installCommand": "npm install",
+	"framework": "nextjs",
+	"regions": [
+		"fra1"
+	],
+	"functions": {
+		"app/**/*.{js,ts,jsx,tsx}": {
+			"maxDuration": 30
+		}
+	}
+}
