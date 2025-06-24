@@ -181,7 +181,7 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 						<div
 							className="flex justify-center"
 							style={{
-								marginTop: '10px'
+								marginTop: '20px'
 							}}
 						>
 							<div
