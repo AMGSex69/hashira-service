@@ -26,6 +26,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { ChatMessageContext } from "@/lib/chat-message-context"
 import { Document, Packer, Paragraph, TextRun } from "docx"
+import { getOfficesList } from "@/lib/script-templates"
 
 // Список округов Москвы
 const DISTRICTS = ["САО", "СВАО", "ВАО", "ЮВАО", "ЮАО", "ЮЗАО", "ЗАО", "СЗАО", "ЦАО", "ТиНАО", "ЗелАО"]
@@ -68,6 +69,7 @@ export default function ScriptGenerator() {
 	const [showGoogleDocDialog, setShowGoogleDocDialog] = useState(false)
 	const [useManualInput, setUseManualInput] = useState(false)
 	const [includeSmartIntercomInfo, setIncludeSmartIntercomInfo] = useState(false)
+	const [isIndividual, setIsIndividual] = useState(false)
 	const [fileName, setFileName] = useState("")
 	const [isLoaded, setIsLoaded] = useState(false)
 
@@ -81,6 +83,7 @@ export default function ScriptGenerator() {
 				setScriptType(parsedData.scriptType || "ego-rounds")
 				setUseManualInput(parsedData.useManualInput || false)
 				setIncludeSmartIntercomInfo(parsedData.includeSmartIntercomInfo || false)
+				setIsIndividual(parsedData.isIndividual || false)
 				setGeneratedScript(parsedData.generatedScript || "")
 				setEditableScript(parsedData.editableScript || "")
 				setFileName(parsedData.fileName || "")
@@ -100,12 +103,13 @@ export default function ScriptGenerator() {
 			scriptType,
 			useManualInput,
 			includeSmartIntercomInfo,
+			isIndividual,
 			generatedScript,
 			editableScript,
 			fileName,
 		}
 		localStorage.setItem("scriptGeneratorData", JSON.stringify(dataToSave))
-	}, [formData, scriptType, useManualInput, includeSmartIntercomInfo, generatedScript, editableScript, fileName, isLoaded])
+	}, [formData, scriptType, useManualInput, includeSmartIntercomInfo, isIndividual, generatedScript, editableScript, fileName, isLoaded])
 
 	// Эффект для автоматического обновления дат от даты завершения ОСС (только в режиме календаря)
 	useEffect(() => {
@@ -206,6 +210,10 @@ export default function ScriptGenerator() {
 
 	const handleSelectChange = (value: string) => {
 		setScriptType(value)
+		// Сбрасываем чекбокс "Физ.лицо" если выбран тип "ЕГО"
+		if (value === "ego-rounds" || value === "ego-no-rounds") {
+			setIsIndividual(false)
+		}
 	}
 
 	const handleDistrictChange = (value: string) => {
@@ -230,6 +238,10 @@ export default function ScriptGenerator() {
 
 	const toggleSmartIntercomInfo = () => {
 		setIncludeSmartIntercomInfo(!includeSmartIntercomInfo)
+	}
+
+	const toggleIndividual = () => {
+		setIsIndividual(!isIndividual)
 	}
 
 	const resetForm = () => {
@@ -270,6 +282,7 @@ export default function ScriptGenerator() {
 		setFileName("")
 		setUseManualInput(false)
 		setIncludeSmartIntercomInfo(false)
+		setIsIndividual(false)
 
 		// Очищаем localStorage
 		localStorage.removeItem("scriptGeneratorData")
@@ -335,18 +348,31 @@ export default function ScriptGenerator() {
 		const electronicTimeValue = useManualInput ? formData.electronicTimeText : formData.electronicTime
 		const paperTimeValue = useManualInput ? formData.paperTimeText : formData.paperTime
 
+		// Get the appropriate offices list based on district and script type
+		const officesList = getOfficesList(formData.district, scriptType, roundDatesText)
+
 		let script = template
 			.replace("{{address}}", `**${formData.address}**`)
 			.replace("{{topic}}", `**${formData.topic}**`)
 			.replace("{{electronicDate}}", `**${electronicDateFormatted} ${electronicTimeValue}**`)
 			.replace("{{paperDate}}", `**${paperDateFormatted} ${paperTimeValue}**`)
+			.replace("{{officesList}}", officesList)
 
 		// Add script-specific replacements
-		if (scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds") {
+		if (scriptType === "not-ego-with-rounds") {
 			script = script.replace("{{roundDates}}", `**${roundDatesText}**`)
 		}
 
 		if (scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds") {
+			// Заменяем плейсхолдер для физ.лиц
+			if (isIndividual) {
+				// Для физ.лиц убираем фразу про новый порядок приема
+				script = script.replace("{{individualSection}}", "")
+			} else {
+				// Для юр.лиц вставляем полную фразу
+				script = script.replace("{{individualSection}}", "Обращаем ваше внимание, что в повестке присутствует вопрос об определении нового порядка приема письменных решений собственников.\nНовый порядок приема обеспечивает прозрачность проведения голосований в информационной системе проекта «Электронный дом», благодаря консультационной и организационной поддержке государственного учреждения города Москвы, являющегося координатором проекта «Электронный дом» - ГКУ «Новые технологии управления». «Единый городской оператор ОСС» будет принимать решения собственников и вносить их в систему, вместо администратора собрания.\n")
+			}
+
 			script = script
 				.replace("{{administrator}}", `**${formData.administrator}**`)
 				.replace("{{adminAddress}}", `**${formData.adminAddress}**`)
@@ -876,18 +902,14 @@ export default function ScriptGenerator() {
 									<Label htmlFor="round1StartDate" className="text-sm text-muted-foreground">
 										Дата обхода
 									</Label>
-									<div className="relative">
-										<Input
-											id="round1StartDate"
-											name="round1StartDate"
-											type="date"
-											value={formData.round1StartDate}
-											onChange={handleInputChange}
-											onPaste={(e) => handleRoundDatePaste(e, "round1StartDate")}
-											className="pr-10"
-										/>
-										<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-									</div>
+									<Input
+										id="round1StartDate"
+										name="round1StartDate"
+										type="date"
+										value={formData.round1StartDate}
+										onChange={handleInputChange}
+										onPaste={(e) => handleRoundDatePaste(e, "round1StartDate")}
+									/>
 
 									<div className="grid grid-cols-2 gap-4">
 										<div>
@@ -969,18 +991,14 @@ export default function ScriptGenerator() {
 									<Label htmlFor="round2StartDate" className="text-sm text-muted-foreground">
 										Дата обхода
 									</Label>
-									<div className="relative">
-										<Input
-											id="round2StartDate"
-											name="round2StartDate"
-											type="date"
-											value={formData.round2StartDate}
-											onChange={handleInputChange}
-											onPaste={(e) => handleRoundDatePaste(e, "round2StartDate")}
-											className="pr-10"
-										/>
-										<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-									</div>
+									<Input
+										id="round2StartDate"
+										name="round2StartDate"
+										type="date"
+										value={formData.round2StartDate}
+										onChange={handleInputChange}
+										onPaste={(e) => handleRoundDatePaste(e, "round2StartDate")}
+									/>
 
 									<div className="grid grid-cols-2 gap-4">
 										<div>
@@ -1061,6 +1079,16 @@ export default function ScriptGenerator() {
 						</Select>
 					</div>
 
+					{/* Чекбокс "Физ.лицо" для скриптов "не ЕГО" */}
+					{(scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds") && (
+						<div className="flex items-center space-x-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+							<Switch id="individual" checked={isIndividual} onCheckedChange={toggleIndividual} />
+							<Label htmlFor="individual" className="text-sm font-medium">
+								Физ.лицо
+							</Label>
+						</div>
+					)}
+
 					<div className="space-y-2">
 						<Label htmlFor="district">Округ</Label>
 						<Select value={formData.district} onValueChange={handleDistrictChange}>
@@ -1115,18 +1143,15 @@ export default function ScriptGenerator() {
 								className="bg-white dark:bg-gray-800"
 							/>
 						) : (
-							<div className="relative">
-								<Input
-									id="completionDate"
-									name="completionDate"
-									type="date"
-									value={formData.completionDate}
-									onChange={handleInputChange}
-									onPaste={handleCompletionDatePaste}
-									className="pr-10 bg-white dark:bg-gray-800"
-								/>
-								<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-							</div>
+							<Input
+								id="completionDate"
+								name="completionDate"
+								type="date"
+								value={formData.completionDate}
+								onChange={handleInputChange}
+								onPaste={handleCompletionDatePaste}
+								className="bg-white dark:bg-gray-800"
+							/>
 						)}
 					</div>
 
@@ -1155,19 +1180,16 @@ export default function ScriptGenerator() {
 							</div>
 						) : (
 							<div className="flex gap-2">
-								<div className="relative w-2/3">
-									<Input
-										id="paperDate"
-										name="paperDate"
-										type="date"
-										value={formData.paperDate}
-										onChange={handleInputChange}
-										onPaste={handlePaperDatePaste}
-										className="pr-10 bg-gray-100 dark:bg-gray-700"
-										disabled
-									/>
-									<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-								</div>
+								<Input
+									id="paperDate"
+									name="paperDate"
+									type="date"
+									value={formData.paperDate}
+									onChange={handleInputChange}
+									onPaste={handlePaperDatePaste}
+									className="w-2/3 bg-gray-100 dark:bg-gray-700"
+									disabled
+								/>
 								<div className="relative w-1/3">
 									<Input
 										id="paperTime"
@@ -1209,19 +1231,16 @@ export default function ScriptGenerator() {
 							</div>
 						) : (
 							<div className="flex gap-2">
-								<div className="relative w-2/3">
-									<Input
-										id="electronicDate"
-										name="electronicDate"
-										type="date"
-										value={formData.electronicDate}
-										onChange={handleInputChange}
-										onPaste={handleElectronicDatePaste}
-										className="pr-10 bg-gray-100 dark:bg-gray-700"
-										disabled
-									/>
-									<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-								</div>
+								<Input
+									id="electronicDate"
+									name="electronicDate"
+									type="date"
+									value={formData.electronicDate}
+									onChange={handleInputChange}
+									onPaste={handleElectronicDatePaste}
+									className="w-2/3 bg-gray-100 dark:bg-gray-700"
+									disabled
+								/>
 								<div className="relative w-1/3">
 									<Input
 										id="electronicTime"

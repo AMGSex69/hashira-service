@@ -318,16 +318,13 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date1">Дата</Label>
 											<div className="flex gap-2">
-												<div className="relative flex-1">
-													<Input
-														id="date1"
-														type="date"
-														value={dates.first.isoDate}
-														onChange={(e) => handleDateChange(e.target.value, 'first')}
-														className="pr-10"
-													/>
-													<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-												</div>
+												<Input
+													id="date1"
+													type="date"
+													value={dates.first.isoDate}
+													onChange={(e) => handleDateChange(e.target.value, 'first')}
+													className="flex-1"
+												/>
 												{(dates.first.date || dates.first.timeStart || dates.first.timeEnd) && (
 													<Button
 														variant="outline"
@@ -408,16 +405,13 @@ export default function PosterGenerator() {
 										<div>
 											<Label htmlFor="date2">Дата</Label>
 											<div className="flex gap-2">
-												<div className="relative flex-1">
-													<Input
-														id="date2"
-														type="date"
-														value={dates.second.isoDate}
-														onChange={(e) => handleDateChange(e.target.value, 'second')}
-														className="pr-10"
-													/>
-													<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-												</div>
+												<Input
+													id="date2"
+													type="date"
+													value={dates.second.isoDate}
+													onChange={(e) => handleDateChange(e.target.value, 'second')}
+													className="flex-1"
+												/>
 												{(dates.second.date || dates.second.timeStart || dates.second.timeEnd) && (
 													<Button
 														variant="outline"

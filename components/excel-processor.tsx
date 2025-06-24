@@ -485,18 +485,15 @@ export default function ExcelProcessor() {
 
 							<div className="space-y-2">
 								<Label htmlFor="ossDate">Дата завершения ОСС *</Label>
-								<div className="relative">
-									<Input
-										id="ossDate"
-										type="date"
-										value={ossDate}
-										onChange={(e) => setOssDate(e.target.value)}
-										onPaste={handleOssDatePaste}
-										className="pr-10 bg-white dark:bg-gray-800"
-										placeholder="Выберите дату"
-									/>
-									<Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-								</div>
+								<Input
+									id="ossDate"
+									type="date"
+									value={ossDate}
+									onChange={(e) => setOssDate(e.target.value)}
+									onPaste={handleOssDatePaste}
+									className="bg-white dark:bg-gray-800"
+									placeholder="Выберите дату"
+								/>
 							</div>
 						</div>
 
