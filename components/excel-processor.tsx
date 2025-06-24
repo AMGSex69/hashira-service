@@ -9,21 +9,46 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { AlertCircle, FileSpreadsheet, Upload, Table } from "lucide-react"
+import { AlertCircle, FileSpreadsheet, Upload, Table, ShoppingCart, Trash2, Plus, Download } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 const DISTRICTS = ["ЦАО", "САО", "СВАО", "ВАО", "ЮВАО", "ЮАО", "ЮЗАО", "ЗАО", "СЗАО", "Зеленоград", "Новая Москва"]
+
+// Интерфейс для элемента корзины
+interface CartItem {
+	id: string
+	address: string
+	district: string
+	ossNumber: string
+	ossDate: string
+	file: File
+	round1Type: string
+	round1Status: string
+	round1Date: string
+	round1StartTime: string
+	round1EndTime: string
+	useRound2: boolean
+	round2Type: string
+	round2Status: string
+	round2Date: string
+	round2StartTime: string
+	round2EndTime: string
+}
 
 export default function ExcelProcessor() {
 	const { toast } = useToast()
 	const [file, setFile] = useState<File | null>(null)
 	const [processing, setProcessing] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+
+	// Состояние корзины
+	const [cart, setCart] = useState<CartItem[]>([])
 
 	// Добавляем состояния для пользовательских данных
 	const [address, setAddress] = useState("")
@@ -98,7 +123,62 @@ export default function ExcelProcessor() {
 		localStorage.setItem("excelProcessorData", JSON.stringify(dataToSave))
 	}, [address, district, ossNumber, ossDate, round1Type, round1Status, round1Date, round1StartTime, round1EndTime, useRound2, round2Type, round2Status, round2Date, round2StartTime, round2EndTime, isLoaded])
 
-	const resetForm = () => {
+	// Функции для работы с корзиной
+	const addToCart = () => {
+		if (!file || !address || !district || !ossNumber || !ossDate) {
+			setError("Пожалуйста, заполните все обязательные поля и выберите файл")
+			return
+		}
+
+		if (round1Type === "date" && !round1Date) {
+			setError("Пожалуйста, укажите дату первого обхода или выберите статус")
+			return
+		}
+
+		if (useRound2 && round2Type === "date" && !round2Date) {
+			setError("Пожалуйста, укажите дату второго обхода или выберите статус")
+			return
+		}
+
+		const newItem: CartItem = {
+			id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+			address,
+			district,
+			ossNumber,
+			ossDate,
+			file,
+			round1Type,
+			round1Status,
+			round1Date,
+			round1StartTime,
+			round1EndTime,
+			useRound2,
+			round2Type,
+			round2Status,
+			round2Date,
+			round2StartTime,
+			round2EndTime,
+		}
+
+		setCart(prev => [...prev, newItem])
+		resetCurrentForm()
+		setError(null)
+
+		toast({
+			title: "Добавлено в корзину",
+			description: `Адрес "${address}" добавлен в корзину`,
+		})
+	}
+
+	const removeFromCart = (id: string) => {
+		setCart(prev => prev.filter(item => item.id !== id))
+	}
+
+	const clearCart = () => {
+		setCart([])
+	}
+
+	const resetCurrentForm = () => {
 		setFile(null)
 		setAddress("")
 		setDistrict("")
@@ -115,6 +195,11 @@ export default function ExcelProcessor() {
 		setRound2Date("")
 		setRound2StartTime("18:00")
 		setRound2EndTime("20:30")
+	}
+
+	const resetForm = () => {
+		resetCurrentForm()
+		setCart([])
 		setError(null)
 		localStorage.removeItem("excelProcessorData")
 	}
@@ -214,6 +299,182 @@ export default function ExcelProcessor() {
 		}
 	}
 
+	// Функция для форматирования дат обходов для конкретного элемента
+	const formatRoundDatesForItem = (item: CartItem) => {
+		let result = ""
+
+		if (item.round1Type === "date") {
+			if (item.round1Date) {
+				const date = new Date(item.round1Date)
+				const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`
+				result = `${formattedDate} (${item.round1StartTime}-${item.round1EndTime})`
+			}
+		} else {
+			result = item.round1Status === "cancelled" ? "Обход отменен" : "Обхода нет"
+		}
+
+		if (item.useRound2) {
+			if (item.round2Type === "date") {
+				if (item.round2Date) {
+					const date2 = new Date(item.round2Date)
+					const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1).toString().padStart(2, "0")}.${date2.getFullYear()}`
+					result += result
+						? `\n${formattedDate2} (${item.round2StartTime}-${item.round2EndTime})`
+						: `${formattedDate2} (${item.round2StartTime}-${item.round2EndTime})`
+				}
+			} else {
+				const statusText = item.round2Status === "cancelled" ? "Обход отменен" : "Обхода нет"
+				result += result ? `\n${statusText}` : statusText
+			}
+		}
+
+		return result
+	}
+
+	// Обработка всей корзины
+	const processCart = async () => {
+		if (cart.length === 0) {
+			setError("Корзина пуста. Добавьте файлы для обработки")
+			return
+		}
+
+		setProcessing(true)
+		setError(null)
+
+		try {
+			let allProcessedData: any[] = []
+			let isFirstFile = true
+
+			for (const item of cart) {
+				// Чтение файла
+				const data = await readFileAsync(item.file)
+				const workbook = XLSX.read(data, { type: "array" })
+
+				// Получаем первый лист
+				const firstSheetName = workbook.SheetNames[0]
+				const worksheet = workbook.Sheets[firstSheetName]
+
+				// Преобразуем в JSON для обработки
+				const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: "A", defval: "" })
+
+				// Удаляем ДВЕ строки заголовков из исходного файла (основную + подзаголовки)
+				jsonData.shift() // Удаляем первую строку
+				jsonData.shift() // Удаляем вторую строку
+
+				// Фильтруем данные
+				const filteredData = jsonData.filter((row: any) => {
+					// Проверяем условия фильтрации
+					return !(
+						row["G"] === "Нет" ||
+						row["G"] === "-" ||
+						row["G"] === "" ||
+						row["H"] === "-" ||
+						row["H"] === "" ||
+						(row["A"] && row["A"].toString().includes("Участвовал"))
+					)
+				})
+
+				// Преобразуем столбец C в числа
+				filteredData.forEach((row: any) => {
+					if (row["C"] && !isNaN(Number(row["C"]))) {
+						row["C"] = Number(row["C"])
+					}
+				})
+
+				// Очищаем и преобразуем телефонные номера в столбце H
+				filteredData.forEach((row: any) => {
+					if (row["H"]) {
+						// Удаляем все нецифровые символы
+						const phoneNumber = cleanPhoneNumber(row["H"].toString())
+
+						// Если номер не пустой, сохраняем его обратно
+						if (phoneNumber.length > 0) {
+							row["H"] = !isNaN(Number(phoneNumber)) ? Number(phoneNumber) : phoneNumber
+						}
+					}
+				})
+
+				// Форматируем даты обходов для текущего элемента
+				const roundDatesFormatted = formatRoundDatesForItem(item)
+
+				// Создаем новый массив данных с нужными столбцами (БЕЗ заголовков)
+				const processedData = filteredData.map((row: any) => {
+					return {
+						// Столбцы A, B, C, D заполняем значениями из элемента корзины
+						A: item.address,
+						B: item.district,
+						C: item.ossNumber,
+						D: item.ossDate,
+						// Столбцы E, F, G берем из C, E, H исходной таблицы
+						E: row["C"],
+						F: row["E"],
+						G: row["H"],
+						// Столбец H заполняем датами обходов
+						H: roundDatesFormatted,
+					}
+				})
+
+				// Добавляем заголовки только для первого файла (одну строку)
+				if (isFirstFile) {
+					allProcessedData.push({
+						A: "Адрес",
+						B: "Округ",
+						C: "Номер ОСС",
+						D: "Дата ОСС",
+						E: "Квартира",
+						F: "ФИО",
+						G: "Телефон",
+						H: "Даты обходов",
+					})
+					isFirstFile = false
+				}
+
+				// Добавляем обработанные данные к общему массиву
+				allProcessedData = allProcessedData.concat(processedData)
+			}
+
+			// Создаем новый лист
+			const newWorksheet = XLSX.utils.json_to_sheet(allProcessedData, { skipHeader: true })
+
+			// Создаем новую книгу
+			const newWorkbook = XLSX.utils.book_new()
+			XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Обработанные данные")
+
+			// Экспортируем файл через браузерный API
+			const excelBuffer = XLSX.write(newWorkbook, { bookType: "xlsx", type: "array" })
+			const blob = new Blob([excelBuffer], {
+				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+			})
+			const url = URL.createObjectURL(blob)
+
+			// Создаем ссылку для скачивания
+			const a = document.createElement("a")
+			a.href = url
+			a.download = `Обработанные_данные_${cart.length}_адресов.xlsx`
+			document.body.appendChild(a)
+			a.click()
+
+			// Очищаем ресурсы
+			setTimeout(() => {
+				document.body.removeChild(a)
+				URL.revokeObjectURL(url)
+			}, 0)
+
+			toast({
+				title: "Обработка завершена",
+				description: `Файл с данными ${cart.length} адресов успешно обработан и скачан`,
+			})
+
+			// Очищаем корзину после успешной обработки
+			clearCart()
+		} catch (err) {
+			console.error("Ошибка при обработке файлов:", err)
+			setError("Произошла ошибка при обработке файлов. Проверьте формат и структуру файлов.")
+		} finally {
+			setProcessing(false)
+		}
+	}
+
 	const processExcel = async () => {
 		if (!file) {
 			setError("Пожалуйста, выберите файл Excel для обработки")
@@ -250,8 +511,9 @@ export default function ExcelProcessor() {
 			// Преобразуем в JSON для обработки
 			const jsonData = XLSX.utils.sheet_to_json<any>(worksheet, { header: "A", defval: "" })
 
-			// Удаляем первую строку (заголовки)
-			jsonData.shift()
+			// Удаляем ДВЕ строки заголовков (основную + подзаголовки)
+			jsonData.shift() // Удаляем первую строку
+			jsonData.shift() // Удаляем вторую строку
 
 			// Фильтруем данные
 			const filteredData = jsonData.filter((row: any) => {
@@ -306,7 +568,7 @@ export default function ExcelProcessor() {
 				}
 			})
 
-			// Добавляем заголовки
+			// Добавляем заголовки (одну строку)
 			processedData.unshift({
 				A: "Адрес",
 				B: "Округ",
@@ -397,6 +659,18 @@ export default function ExcelProcessor() {
 						</TabsTrigger>
 						<TabsTrigger value="data" className="rounded-md px-4 py-2 relative">
 							Данные для обработки
+							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
+						</TabsTrigger>
+						<TabsTrigger value="cart" className="rounded-md px-4 py-2 relative">
+							<div className="flex items-center gap-2">
+								<ShoppingCart className="h-4 w-4" />
+								Корзина
+								{cart.length > 0 && (
+									<Badge variant="secondary" className="ml-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+										{cart.length}
+									</Badge>
+								)}
+							</div>
 							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
 						</TabsTrigger>
 					</TabsList>
@@ -661,6 +935,79 @@ export default function ExcelProcessor() {
 							</div>
 						</div>
 					</TabsContent>
+
+					<TabsContent value="cart" className="space-y-4 animate-fade-in">
+						<div className="flex items-center justify-between">
+							<h3 className="font-medium">Файлы в корзине ({cart.length})</h3>
+							{cart.length > 0 && (
+								<Button onClick={clearCart} variant="outline" size="sm">
+									<Trash2 className="h-4 w-4 mr-2" />
+									Очистить корзину
+								</Button>
+							)}
+						</div>
+
+						{cart.length === 0 ? (
+							<div className="text-center py-8 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-md">
+								<ShoppingCart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+								<p className="text-muted-foreground">Корзина пуста</p>
+								<p className="text-sm text-muted-foreground">Добавьте файлы через вкладки "Загрузка файла" и "Данные для обработки"</p>
+							</div>
+						) : (
+							<div className="space-y-3">
+								{cart.map((item, index) => (
+									<div key={item.id} className="border p-4 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+										<div className="flex items-start justify-between">
+											<div className="flex-1">
+												<div className="flex items-center gap-2 mb-2">
+													<Badge variant="outline">#{index + 1}</Badge>
+													<h4 className="font-medium">{item.address}</h4>
+												</div>
+												<div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-muted-foreground">
+													<div>
+														<span className="font-medium">Округ:</span> {item.district}
+													</div>
+													<div>
+														<span className="font-medium">ОСС:</span> {item.ossNumber}
+													</div>
+													<div>
+														<span className="font-medium">Дата:</span> {item.ossDate}
+													</div>
+													<div>
+														<span className="font-medium">Файл:</span> {item.file.name}
+													</div>
+												</div>
+												<div className="mt-2 text-sm">
+													<span className="font-medium">Обходы:</span>
+													<div className="whitespace-pre-line text-muted-foreground">
+														{formatRoundDatesForItem(item)}
+													</div>
+												</div>
+											</div>
+											<Button
+												onClick={() => removeFromCart(item.id)}
+												variant="outline"
+												size="sm"
+												className="ml-4"
+											>
+												<Trash2 className="h-4 w-4" />
+											</Button>
+										</div>
+									</div>
+								))}
+
+								<div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-4 rounded-md">
+									<h4 className="font-medium mb-2">Что произойдет при обработке:</h4>
+									<ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+										<li>Все файлы будут обработаны с их индивидуальными настройками</li>
+										<li>Данные объединятся в один файл Excel</li>
+										<li>Заголовки таблицы добавятся только один раз (в начале)</li>
+										<li>Корзина автоматически очистится после успешной обработки</li>
+									</ul>
+								</div>
+							</div>
+						)}
+					</TabsContent>
 				</Tabs>
 
 				{error && (
@@ -673,11 +1020,30 @@ export default function ExcelProcessor() {
 			</CardContent>
 			<CardFooter className="flex gap-2 justify-between">
 				<Button onClick={resetForm} variant="outline" disabled={processing}>
-					Сбросить
+					Сбросить всё
 				</Button>
-				<Button onClick={processExcel} disabled={!file || processing} className="gradient-bg border-0">
-					{processing ? "Обработка..." : "Обработать и скачать"}
-				</Button>
+				<div className="flex gap-2">
+					<Button
+						onClick={addToCart}
+						variant="outline"
+						disabled={!file || processing}
+						className="flex items-center gap-2"
+					>
+						<Plus className="h-4 w-4" />
+						Добавить в корзину
+					</Button>
+					<Button onClick={processExcel} disabled={!file || processing} variant="secondary">
+						{processing ? "Обработка..." : "Обработать один файл"}
+					</Button>
+					<Button
+						onClick={processCart}
+						disabled={cart.length === 0 || processing}
+						className="gradient-bg border-0 flex items-center gap-2"
+					>
+						<Download className="h-4 w-4" />
+						{processing ? "Обработка..." : `Обработать корзину (${cart.length})`}
+					</Button>
+				</div>
 			</CardFooter>
 		</Card>
 	)
