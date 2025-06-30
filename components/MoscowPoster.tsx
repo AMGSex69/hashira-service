@@ -14,9 +14,10 @@ interface TextContentProps {
 		second?: DateInfo;
 	};
 	phone: string;
+	showPhone: boolean;
 }
 
-export default function MoscowPoster({ dates, phone }: TextContentProps) {
+export default function MoscowPoster({ dates, phone, showPhone }: TextContentProps) {
 	// Проверяем, идут ли даты подряд
 	const areDatesConsecutive = (date1: string, date2: string) => {
 		const [day1, month1] = date1.toLowerCase().split(' ');
@@ -50,65 +51,81 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 		};
 	};
 
+	// Получаем правильный текст в зависимости от количества дат
+	const getEventText = () => {
+		const hasMultipleDates = hasSecondDate();
+		if (hasMultipleDates) {
+			return "состоятся поквартирные обходы";
+		} else {
+			return "состоится поквартирный обход";
+		}
+	};
+
+	// Проверяем, одинаковый ли месяц у двух дат
+	const isSameMonth = (date1: string, date2: string) => {
+		const [, month1] = date1.toLowerCase().split(' ');
+		const [, month2] = date2.toLowerCase().split(' ');
+		return month1 === month2;
+	};
+
+	// Форматируем даты для одного месяца
+	const formatSameMonthDates = (date1: string, date2: string) => {
+		const [day1, month1] = date1.toLowerCase().split(' ');
+		const [day2] = date2.toLowerCase().split(' ');
+
+		if (areDatesConsecutive(date1, date2)) {
+			return `${day1}-${day2} ${month1}`;
+		} else {
+			return `${day1} и ${day2} ${month1}`;
+		}
+	};
+
 	// Генерируем контент для дат
 	const generateDateContent = () => {
 		// Если есть вторая дата и время одинаковое (или у второй даты не указано время)
 		if (hasSecondDate() && isSameTime()) {
 			const timeStr = `с ${dates.first.timeStart} до ${dates.first.timeEnd}`;
 
-			if (areDatesConsecutive(dates.first.date, dates.second!.date)) {
-				// Если даты идут подряд
-				return (
-					<div
-						className="absolute flex flex-col items-center"
-						style={{
-							width: '400px',
-							left: '97px',
-							top: '240px'
-						}}
-					>
-						<div className="flex justify-center">
-							<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
-								{dates.first.date.toLowerCase()}-{dates.second!.date.toLowerCase()}
-							</div>
-						</div>
-						<div
-							className="flex justify-center text-[34px] leading-[41px] whitespace-nowrap same-time"
-							style={{
-								marginTop: '20px'
-							}}
-						>
-							{timeStr}
-						</div>
-					</div>
-				);
+			// Проверяем, одинаковый ли месяц
+			const sameMonth = isSameMonth(dates.first.date, dates.second!.date);
+			let displayText;
+
+			if (sameMonth) {
+				// Если месяц одинаковый, используем оптимизированный формат
+				displayText = formatSameMonthDates(dates.first.date, dates.second!.date);
 			} else {
-				// Если даты не подряд, но время одинаковое
-				return (
-					<div
-						className="absolute flex flex-col items-center"
-						style={{
-							width: '400px',
-							left: '97px',
-							top: '240px'
-						}}
-					>
-						<div className="flex justify-center">
-							<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
-								{dates.first.date.toLowerCase()} и {dates.second!.date.toLowerCase()}
-							</div>
-						</div>
-						<div
-							className="flex justify-center text-[34px] leading-[41px] whitespace-nowrap same-time"
-							style={{
-								marginTop: '20px'
-							}}
-						>
-							{timeStr}
+				// Если месяцы разные, отображаем как раньше
+				if (areDatesConsecutive(dates.first.date, dates.second!.date)) {
+					displayText = `${dates.first.date.toLowerCase()}-${dates.second!.date.toLowerCase()}`;
+				} else {
+					displayText = `${dates.first.date.toLowerCase()} и ${dates.second!.date.toLowerCase()}`;
+				}
+			}
+
+			return (
+				<div
+					className="absolute flex flex-col items-center"
+					style={{
+						width: '400px',
+						left: '97px',
+						top: '240px'
+					}}
+				>
+					<div className="flex justify-center">
+						<div className="font-bold text-[36px] leading-[44px] whitespace-nowrap relative poster-date-underline">
+							{displayText}
 						</div>
 					</div>
-				);
-			}
+					<div
+						className="flex justify-center text-[34px] leading-[41px] whitespace-nowrap same-time"
+						style={{
+							marginTop: '20px'
+						}}
+					>
+						{timeStr}
+					</div>
+				</div>
+			);
 		}
 
 		// Если только одна дата
@@ -238,9 +255,9 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 							lineHeight: (!hasSecondDate() || isSameTime()) ? '42px' : '39px'
 						}}
 					>
-						Состоятся поквартирные обходы
+						{getEventText().charAt(0).toUpperCase() + getEventText().slice(1)}
 						<br />
-						сотрудников платформы
+						сотрудниками платформы
 						<br />
 						Правительства Москвы
 						<br />
@@ -254,13 +271,15 @@ export default function MoscowPoster({ dates, phone }: TextContentProps) {
 					</p>
 				</div>
 
-				{/* Телефон */}
-				<div className="absolute w-[450px] left-[72.65px] top-[730.5px] text-center">
-					<p className="text-[22px] leading-[27px]">
-						По всем вопросам обращайтесь по телефону:{" "}
-						<span className="font-bold">{phone}</span>
-					</p>
-				</div>
+				{/* Телефон - показываем только если включен чекбокс */}
+				{showPhone && (
+					<div className="absolute w-[450px] left-[72.65px] top-[730.5px] text-center">
+						<p className="text-[22px] leading-[27px]">
+							По всем вопросам обращайтесь по телефону:{" "}
+							<span className="font-bold">{phone}</span>
+						</p>
+					</div>
+				)}
 			</div>
 		</div>
 	);

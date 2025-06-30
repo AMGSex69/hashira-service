@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RotateCcw, X, Download, FileText } from "lucide-react";
 import { Clock, Calendar } from "lucide-react";
 import html2canvas from 'html2canvas';
@@ -28,6 +29,7 @@ export default function PosterGenerator() {
 		}
 	});
 	const [phone, setPhone] = useState('8 (499) 652-62-11');
+	const [showPhone, setShowPhone] = useState(true);
 	const [isLoaded, setIsLoaded] = useState(false);
 
 	// Загрузка сохраненного состояния при монтировании компонента
@@ -42,6 +44,9 @@ export default function PosterGenerator() {
 				if (parsedData.phone) {
 					setPhone(parsedData.phone);
 				}
+				if (parsedData.showPhone !== undefined) {
+					setShowPhone(parsedData.showPhone);
+				}
 			} catch (error) {
 				console.error('Ошибка при загрузке сохраненных данных:', error);
 			}
@@ -55,10 +60,96 @@ export default function PosterGenerator() {
 
 		const dataToSave = {
 			dates,
-			phone
+			phone,
+			showPhone
 		};
 		localStorage.setItem('posterGeneratorData', JSON.stringify(dataToSave));
-	}, [dates, phone, isLoaded]);
+	}, [dates, phone, showPhone, isLoaded]);
+
+	// Получаем время для второй даты (если не указано, используем время первой)
+	const getSecondDateTime = () => {
+		if (!dates.second) return { timeStart: '', timeEnd: '' };
+		return {
+			timeStart: dates.second.timeStart || dates.first.timeStart,
+			timeEnd: dates.second.timeEnd || dates.first.timeEnd
+		};
+	};
+
+	// Функция для распознавания и конвертации различных форматов даты
+	const parseDateFromClipboard = (clipboardText: string): string | null => {
+		const cleanText = clipboardText.trim();
+
+		// Уже в ISO формате (YYYY-MM-DD)
+		if (/^\d{4}-\d{2}-\d{2}$/.test(cleanText)) {
+			return cleanText;
+		}
+
+		// Форматы с точками (DD.MM.YYYY, D.M.YYYY)
+		const dotFormat = cleanText.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+		if (dotFormat) {
+			const [, day, month, year] = dotFormat;
+			return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+		}
+
+		// Форматы с слешами (DD/MM/YYYY, MM/DD/YYYY)
+		const slashFormat = cleanText.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+		if (slashFormat) {
+			const [, first, second, year] = slashFormat;
+			// Предполагаем DD/MM/YYYY (европейский формат)
+			return `${year}-${second.padStart(2, '0')}-${first.padStart(2, '0')}`;
+		}
+
+		// Русские месяцы (DD месяц YYYY)
+		const monthNames = {
+			'январь': '01', 'января': '01',
+			'февраль': '02', 'февраля': '02',
+			'март': '03', 'марта': '03',
+			'апрель': '04', 'апреля': '04',
+			'май': '05', 'мая': '05',
+			'июнь': '06', 'июня': '06',
+			'июль': '07', 'июля': '07',
+			'август': '08', 'августа': '08',
+			'сентябрь': '09', 'сентября': '09',
+			'октябрь': '10', 'октября': '10',
+			'ноябрь': '11', 'ноября': '11',
+			'декабрь': '12', 'декабря': '12'
+		};
+
+		const russianFormat = cleanText.toLowerCase().match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+		if (russianFormat) {
+			const [, day, monthName, year] = russianFormat;
+			const monthNumber = monthNames[monthName as keyof typeof monthNames];
+			if (monthNumber) {
+				return `${year}-${monthNumber}-${day.padStart(2, '0')}`;
+			}
+		}
+
+		// Попытка использовать Date.parse для других форматов
+		try {
+			const parsedDate = new Date(cleanText);
+			if (!isNaN(parsedDate.getTime())) {
+				return parsedDate.toISOString().split('T')[0];
+			}
+		} catch (e) {
+			// Игнорируем ошибки парсинга
+		}
+
+		return null;
+	};
+
+	// Обработчик вставки для полей даты
+	const handleDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, dayKey: 'first' | 'second') => {
+		e.preventDefault();
+		const clipboardText = e.clipboardData.getData('text');
+		const parsedDate = parseDateFromClipboard(clipboardText);
+
+		if (parsedDate) {
+			handleDateChange(parsedDate, dayKey);
+		} else {
+			// Если не удалось распознать формат, показываем подсказку
+			alert('Не удалось распознать формат даты. Поддерживаются форматы:\n• DD.MM.YYYY (например, 15.03.2024)\n• DD/MM/YYYY (например, 15/03/2024)\n• DD месяца YYYY (например, 15 марта 2024)\n• YYYY-MM-DD (например, 2024-03-15)');
+		}
+	};
 
 	// Обработчик быстрого выбора времени
 	const handleQuickTimeSelect = (dayKey: 'first' | 'second', timeType: 'start' | 'end', value: string) => {
@@ -131,6 +222,7 @@ export default function PosterGenerator() {
 			}
 		});
 		setPhone('8 (499) 652-62-11');
+		setShowPhone(true);
 		// Очищаем сохраненные данные
 		localStorage.removeItem('posterGeneratorData');
 	};
@@ -323,6 +415,7 @@ export default function PosterGenerator() {
 													type="date"
 													value={dates.first.isoDate}
 													onChange={(e) => handleDateChange(e.target.value, 'first')}
+													onPaste={(e) => handleDatePaste(e, 'first')}
 													className="flex-1"
 												/>
 												{(dates.first.date || dates.first.timeStart || dates.first.timeEnd) && (
@@ -410,6 +503,7 @@ export default function PosterGenerator() {
 													type="date"
 													value={dates.second.isoDate}
 													onChange={(e) => handleDateChange(e.target.value, 'second')}
+													onPaste={(e) => handleDatePaste(e, 'second')}
 													className="flex-1"
 												/>
 												{(dates.second.date || dates.second.timeStart || dates.second.timeEnd) && (
@@ -489,16 +583,26 @@ export default function PosterGenerator() {
 									{/* Телефон */}
 									<div className="space-y-4">
 										<h3 className="font-semibold">Контактная информация</h3>
-										<div>
-											<Label htmlFor="phone">Телефон</Label>
-											<Input
-												id="phone"
-												type="tel"
-												value={phone}
-												onChange={(e) => setPhone(e.target.value)}
-												placeholder="8 (499) 652-62-11"
+										<div className="flex items-center space-x-2">
+											<Checkbox
+												id="showPhone"
+												checked={showPhone}
+												onCheckedChange={(checked) => setShowPhone(checked as boolean)}
 											/>
+											<Label htmlFor="showPhone">Показывать телефон</Label>
 										</div>
+										{showPhone && (
+											<div>
+												<Label htmlFor="phone">Телефон</Label>
+												<Input
+													id="phone"
+													type="tel"
+													value={phone}
+													onChange={(e) => setPhone(e.target.value)}
+													placeholder="8 (499) 652-62-11"
+												/>
+											</div>
+										)}
 									</div>
 
 									{/* Кнопки экспорта */}
@@ -530,7 +634,7 @@ export default function PosterGenerator() {
 										{/* Принудительная светлая тема для плаката */}
 										<div className="light">
 											<div id="moscow-poster" className="moscow-poster-container">
-												<MoscowPoster dates={dates} phone={phone} />
+												<MoscowPoster dates={dates} phone={phone} showPhone={showPhone} />
 											</div>
 										</div>
 									</div>
