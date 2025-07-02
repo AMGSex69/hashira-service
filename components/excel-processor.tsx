@@ -637,7 +637,15 @@ export default function ExcelProcessor() {
 
 	// Функция для очистки телефонного номера от нецифровых символов
 	const cleanPhoneNumber = (phoneStr: string): string => {
-		return phoneStr.replace(/\D/g, "")
+		// Удаляем все нецифровые символы
+		let cleanPhone = phoneStr.replace(/\D/g, "")
+
+		// Если номер начинается с 7, убираем её
+		if (cleanPhone.startsWith("7")) {
+			cleanPhone = cleanPhone.substring(1)
+		}
+
+		return cleanPhone
 	}
 
 	return (
