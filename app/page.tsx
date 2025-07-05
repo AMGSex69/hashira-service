@@ -6,12 +6,13 @@ import ScriptGenerator from "@/components/script-generator"
 import ExcelProcessor from "@/components/excel-processor"
 import ChatMessageGenerator from "@/components/chat-message-generator"
 import PosterGenerator from "@/components/poster-generator"
+import OssAllInOne from "@/components/oss-all-in-one"
 import { ChatMessageProvider } from "@/lib/chat-message-context"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Star } from "lucide-react"
 
 export default function Home() {
-	const [activeTab, setActiveTab] = useState("scripts")
+	const [activeTab, setActiveTab] = useState("oss-all-in-one")
 
 	// Загрузка активной вкладки из localStorage при монтировании
 	useEffect(() => {
@@ -54,6 +55,10 @@ export default function Home() {
 						<div className="flex justify-center mb-8">
 							{/* Убираем max-w-md, чтобы контролировать ширину напрямую */}
 							<TabsList className="flex justify-center bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-1.5 rounded-xl shadow-sm">
+								<TabsTrigger value="oss-all-in-one" className="rounded-lg px-6 py-2 relative">
+									ОСС под ключ
+									<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
+								</TabsTrigger>
 								<TabsTrigger value="scripts" className="rounded-lg px-6 py-2 relative">
 									Генератор скриптов
 									<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
@@ -72,6 +77,10 @@ export default function Home() {
 								</TabsTrigger>
 							</TabsList>
 						</div>
+
+						<TabsContent value="oss-all-in-one">
+							<OssAllInOne />
+						</TabsContent>
 
 						<TabsContent value="scripts">
 							<ScriptGenerator />
