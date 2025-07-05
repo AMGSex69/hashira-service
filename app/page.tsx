@@ -8,10 +8,22 @@ import ChatMessageGenerator from "@/components/chat-message-generator"
 import PosterGenerator from "@/components/poster-generator"
 import { ChatMessageProvider } from "@/lib/chat-message-context"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Star } from "lucide-react"
+import { Star, AlertTriangle } from "lucide-react"
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function Home() {
 	const [activeTab, setActiveTab] = useState("scripts")
+	const [showWarningDialog, setShowWarningDialog] = useState(false)
+	const [pendingTab, setPendingTab] = useState<string | null>(null)
 
 	// Загрузка активной вкладки из localStorage при монтировании
 	useEffect(() => {
@@ -19,12 +31,63 @@ export default function Home() {
 		if (savedTab) {
 			setActiveTab(savedTab)
 		}
+
+		// Предупреждение при обновлении страницы или закрытии браузера
+		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+			if (hasFilesInCart()) {
+				e.preventDefault()
+				e.returnValue = "В корзине есть несохраненные файлы. Они будут удалены при обновлении страницы."
+			}
+		}
+
+		window.addEventListener("beforeunload", handleBeforeUnload)
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload)
 	}, [])
+
+	// Функция для проверки наличия файлов в корзине Excel процессора
+	const hasFilesInCart = (): boolean => {
+		try {
+			// Проверяем через специальный флаг из localStorage
+			const hasFilesData = localStorage.getItem("excelProcessorHasFiles")
+			if (hasFilesData) {
+				return JSON.parse(hasFilesData)
+			}
+			return false
+		} catch {
+			return false
+		}
+	}
 
 	// Сохранение активной вкладки в localStorage при изменении
 	const handleTabChange = (value: string) => {
+		// Если уходим с вкладки Excel и в корзине есть файлы - показываем предупреждение
+		if (activeTab === "excel" && value !== "excel" && hasFilesInCart()) {
+			setPendingTab(value)
+			setShowWarningDialog(true)
+			return
+		}
+
 		setActiveTab(value)
 		localStorage.setItem("activeTab", value)
+	}
+
+	// Подтверждение перехода на другую вкладку
+	const confirmTabChange = () => {
+		if (pendingTab) {
+			// Отправляем событие для очистки файлов из корзины
+			window.dispatchEvent(new CustomEvent("clearCartFiles"))
+
+			setActiveTab(pendingTab)
+			localStorage.setItem("activeTab", pendingTab)
+			setPendingTab(null)
+		}
+		setShowWarningDialog(false)
+	}
+
+	// Отмена перехода
+	const cancelTabChange = () => {
+		setPendingTab(null)
+		setShowWarningDialog(false)
 	}
 	return (
 		<ChatMessageProvider>
@@ -97,6 +160,31 @@ export default function Home() {
 					</div>
 				</footer>
 			</div>
+
+			{/* Диалог предупреждения */}
+			<AlertDialog open={showWarningDialog} onOpenChange={setShowWarningDialog}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle className="flex items-center gap-2">
+							<AlertTriangle className="h-5 w-5 text-amber-500" />
+							Внимание!
+						</AlertDialogTitle>
+						<AlertDialogDescription>
+							В корзине Excel процессора есть загруженные файлы. При переходе на другую вкладку все файлы будут удалены из корзины.
+							<br /><br />
+							Сохраненные адреса останутся, но файлы нужно будет загрузить заново.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel onClick={cancelTabChange}>
+							Остаться
+						</AlertDialogCancel>
+						<AlertDialogAction onClick={confirmTabChange} className="bg-amber-500 hover:bg-amber-600">
+							Перейти (файлы будут удалены)
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</ChatMessageProvider>
 	)
 }

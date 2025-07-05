@@ -8,26 +8,29 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RotateCcw, X, Download, FileText } from "lucide-react";
+import { RotateCcw, X, Download, FileText, Plus } from "lucide-react";
 import { Clock, Calendar } from "lucide-react";
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
+interface DateInfo {
+	id: number;
+	date: string;
+	isoDate: string;
+	timeStart: string;
+	timeEnd: string;
+}
+
 export default function PosterGenerator() {
-	const [dates, setDates] = useState({
-		first: {
+	const [dates, setDates] = useState<DateInfo[]>([
+		{
+			id: 1,
 			date: '',
-			isoDate: '',  // Для HTML5 календаря
-			timeStart: '',
-			timeEnd: ''
-		},
-		second: {
-			date: '',
-			isoDate: '',  // Для HTML5 календаря
+			isoDate: '',
 			timeStart: '',
 			timeEnd: ''
 		}
-	});
+	]);
 	const [phone, setPhone] = useState('8 (499) 652-62-11');
 	const [showPhone, setShowPhone] = useState(true);
 	const [isLoaded, setIsLoaded] = useState(false);
@@ -38,17 +41,79 @@ export default function PosterGenerator() {
 		if (savedData) {
 			try {
 				const parsedData = JSON.parse(savedData);
+
+				// Проверяем, в каком формате сохранены данные
 				if (parsedData.dates) {
-					setDates(parsedData.dates);
+					// Если это массив - используем как есть
+					if (Array.isArray(parsedData.dates)) {
+						setDates(parsedData.dates);
+					} else {
+						// Если это старый формат с first/second - конвертируем в массив
+						const convertedDates: DateInfo[] = [];
+
+						if (parsedData.dates.first) {
+							convertedDates.push({
+								id: 1,
+								date: parsedData.dates.first.date || '',
+								isoDate: parsedData.dates.first.isoDate || '',
+								timeStart: parsedData.dates.first.timeStart || '',
+								timeEnd: parsedData.dates.first.timeEnd || ''
+							});
+						}
+
+						if (parsedData.dates.second) {
+							convertedDates.push({
+								id: 2,
+								date: parsedData.dates.second.date || '',
+								isoDate: parsedData.dates.second.isoDate || '',
+								timeStart: parsedData.dates.second.timeStart || '',
+								timeEnd: parsedData.dates.second.timeEnd || ''
+							});
+						}
+
+						// Если нет конвертированных дат, устанавливаем пустой массив по умолчанию
+						if (convertedDates.length === 0) {
+							convertedDates.push({
+								id: 1,
+								date: '',
+								isoDate: '',
+								timeStart: '',
+								timeEnd: ''
+							});
+						}
+
+						setDates(convertedDates);
+					}
 				}
+
 				if (parsedData.phone) {
 					setPhone(parsedData.phone);
 				}
 				if (parsedData.showPhone !== undefined) {
 					setShowPhone(parsedData.showPhone);
 				}
+
+				// Проверяем флаг автоматической генерации и очищаем его
+				if (parsedData.autoGenerate) {
+					// Очищаем флаг автоматической генерации
+					const updatedData = { ...parsedData, autoGenerate: false };
+					localStorage.setItem('posterGeneratorData', JSON.stringify(updatedData));
+					// Автоскачивание убрано по просьбе пользователя
+				}
 			} catch (error) {
 				console.error('Ошибка при загрузке сохраненных данных:', error);
+				// Очищаем поврежденные данные
+				localStorage.removeItem('posterGeneratorData');
+				// В случае ошибки устанавливаем значения по умолчанию
+				setDates([
+					{
+						id: 1,
+						date: '',
+						isoDate: '',
+						timeStart: '',
+						timeEnd: ''
+					}
+				]);
 			}
 		}
 		setIsLoaded(true);
@@ -58,21 +123,41 @@ export default function PosterGenerator() {
 	useEffect(() => {
 		if (!isLoaded) return;
 
+		// Убеждаемся, что dates это массив перед сохранением
+		const safeDatesForSave = Array.isArray(dates) ? dates : [];
 		const dataToSave = {
-			dates,
+			dates: safeDatesForSave,
 			phone,
 			showPhone
 		};
 		localStorage.setItem('posterGeneratorData', JSON.stringify(dataToSave));
 	}, [dates, phone, showPhone, isLoaded]);
 
-	// Получаем время для второй даты (если не указано, используем время первой)
-	const getSecondDateTime = () => {
-		if (!dates.second) return { timeStart: '', timeEnd: '' };
-		return {
-			timeStart: dates.second.timeStart || dates.first.timeStart,
-			timeEnd: dates.second.timeEnd || dates.first.timeEnd
-		};
+	// Добавить новую дату
+	const addDate = () => {
+		const currentDates = Array.isArray(dates) ? dates : [];
+		if (currentDates.length >= 4) return; // Максимум 4 даты
+		const newId = currentDates.length > 0 ? Math.max(...currentDates.map(d => d.id)) + 1 : 1;
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return [...prevArray, {
+				id: newId,
+				date: '',
+				isoDate: '',
+				timeStart: '',
+				timeEnd: ''
+			}];
+		});
+	};
+
+	// Удалить дату
+	const removeDate = (id: number) => {
+		const currentDates = Array.isArray(dates) ? dates : [];
+		if (currentDates.length <= 1) return; // Минимум 1 дата
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return prevArray.filter(d => d.id !== id);
+		});
 	};
 
 	// Функция для распознавания и конвертации различных форматов даты
@@ -138,13 +223,13 @@ export default function PosterGenerator() {
 	};
 
 	// Обработчик вставки для полей даты
-	const handleDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, dayKey: 'first' | 'second') => {
+	const handleDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, dateId: number) => {
 		e.preventDefault();
 		const clipboardText = e.clipboardData.getData('text');
 		const parsedDate = parseDateFromClipboard(clipboardText);
 
 		if (parsedDate) {
-			handleDateChange(parsedDate, dayKey);
+			handleDateChange(parsedDate, dateId);
 		} else {
 			// Если не удалось распознать формат, показываем подсказку
 			alert('Не удалось распознать формат даты. Поддерживаются форматы:\n• DD.MM.YYYY (например, 15.03.2024)\n• DD/MM/YYYY (например, 15/03/2024)\n• DD месяца YYYY (например, 15 марта 2024)\n• YYYY-MM-DD (например, 2024-03-15)');
@@ -152,15 +237,16 @@ export default function PosterGenerator() {
 	};
 
 	// Обработчик быстрого выбора времени
-	const handleQuickTimeSelect = (dayKey: 'first' | 'second', timeType: 'start' | 'end', value: string) => {
+	const handleQuickTimeSelect = (dateId: number, timeType: 'start' | 'end', value: string) => {
 		const timeKey = timeType === 'start' ? 'timeStart' : 'timeEnd';
-		setDates(prev => ({
-			...prev,
-			[dayKey]: {
-				...prev[dayKey],
-				[timeKey]: value
-			}
-		}));
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return prevArray.map(date =>
+				date.id === dateId
+					? { ...date, [timeKey]: value }
+					: date
+			);
+		});
 	};
 
 	// Функция преобразования ISO даты в нужный формат
@@ -180,47 +266,54 @@ export default function PosterGenerator() {
 	};
 
 	// Обработчик изменения даты
-	const handleDateChange = (value: string, dayKey: 'first' | 'second') => {
+	const handleDateChange = (value: string, dateId: number) => {
 		const displayDate = convertISOToDisplayDate(value);
-		setDates(prev => ({
-			...prev,
-			[dayKey]: {
-				...prev[dayKey],
-				date: displayDate,  // Сохраняем в нужном формате для отображения
-				isoDate: value      // Сохраняем ISO формат для календаря
-			}
-		}));
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return prevArray.map(date =>
+				date.id === dateId
+					? { ...date, date: displayDate, isoDate: value }
+					: date
+			);
+		});
 	};
 
 	// Обработчик очистки даты и времени
-	const clearDateAndTime = (dayKey: 'first' | 'second') => {
-		setDates(prev => ({
-			...prev,
-			[dayKey]: {
-				date: '',
-				isoDate: '',
-				timeStart: '',
-				timeEnd: ''
-			}
-		}));
+	const clearDateAndTime = (dateId: number) => {
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return prevArray.map(date =>
+				date.id === dateId
+					? { ...date, date: '', isoDate: '', timeStart: '', timeEnd: '' }
+					: date
+			);
+		});
+	};
+
+	// Обработчик изменения времени
+	const handleTimeChange = (dateId: number, timeType: 'start' | 'end', value: string) => {
+		const timeKey = timeType === 'start' ? 'timeStart' : 'timeEnd';
+		setDates(prev => {
+			const prevArray = Array.isArray(prev) ? prev : [];
+			return prevArray.map(date =>
+				date.id === dateId
+					? { ...date, [timeKey]: value }
+					: date
+			);
+		});
 	};
 
 	// Обработчик сброса всех полей
 	const resetAllFields = () => {
-		setDates({
-			first: {
-				date: '',
-				isoDate: '',
-				timeStart: '',
-				timeEnd: ''
-			},
-			second: {
+		setDates([
+			{
+				id: 1,
 				date: '',
 				isoDate: '',
 				timeStart: '',
 				timeEnd: ''
 			}
-		});
+		]);
 		setPhone('8 (499) 652-62-11');
 		setShowPhone(true);
 		// Очищаем сохраненные данные
@@ -232,34 +325,49 @@ export default function PosterGenerator() {
 		const posterElement = document.querySelector('.moscow-poster-container');
 		if (!posterElement) return;
 
-		try {
-			// Временно добавляем классы для экспорта в PDF
-			const dateElements = posterElement.querySelectorAll('.poster-date-underline');
-			posterElement.classList.add('pdf-export-mode');
+		// Сохраняем элементы для восстановления
+		const elementsToRestore: Array<{ element: HTMLElement, properties: string[] }> = [];
 
-			dateElements.forEach((el) => {
-				el.classList.add('pdf-export-mode');
+		try {
+			// Находим все элементы с подчеркиванием дат и временно увеличиваем отступ
+			const dateUnderlines = posterElement.querySelectorAll('.poster-date-underline');
+			dateUnderlines.forEach(element => {
+				const el = element as HTMLElement;
+				elementsToRestore.push({ element: el, properties: ['padding-bottom'] });
+				el.style.setProperty('padding-bottom', '20px', 'important');
 			});
 
+			// Находим все элементы с датами и приподнимаем их на 8px
+			const dateElements = posterElement.querySelectorAll('.poster-date-container, .poster-date, .date-wrapper');
+			dateElements.forEach(element => {
+				const el = element as HTMLElement;
+				elementsToRestore.push({ element: el, properties: ['margin-top'] });
+				el.style.setProperty('margin-top', '-8px', 'important');
+			});
+
+			// Ждем применения изменений
+			await new Promise(resolve => setTimeout(resolve, 100));
+
 			const canvas = await html2canvas(posterElement as HTMLElement, {
-				scale: 3,
+				scale: 2,
 				useCORS: true,
 				allowTaint: true,
 				backgroundColor: '#ffffff',
 				logging: false,
-				width: posterElement.scrollWidth,
-				height: posterElement.scrollHeight,
+				width: (posterElement as HTMLElement).offsetWidth,
+				height: (posterElement as HTMLElement).offsetHeight,
 				scrollX: 0,
-				scrollY: 0,
-				foreignObjectRendering: false
+				scrollY: 0
 			});
 
-			// Убираем временные классы
-			posterElement.classList.remove('pdf-export-mode');
-			dateElements.forEach((el) => {
-				el.classList.remove('pdf-export-mode');
+			// Восстанавливаем стили - удаляем все inline стили, которые мы добавили
+			elementsToRestore.forEach(({ element, properties }) => {
+				properties.forEach(property => {
+					element.style.removeProperty(property);
+				});
 			});
 
+			// Создаем PDF
 			const imgData = canvas.toDataURL('image/png');
 			const pdf = new jsPDF({
 				orientation: 'portrait',
@@ -267,94 +375,87 @@ export default function PosterGenerator() {
 				format: 'a4'
 			});
 
-			const pageWidth = 210; // A4 width in mm
-			const pageHeight = 297; // A4 height in mm
-
-			// Рассчитываем размеры так, чтобы плакат поместился на одну страницу
+			const pageWidth = 210;
+			const pageHeight = 297;
 			const canvasRatio = canvas.width / canvas.height;
 			const pageRatio = pageWidth / pageHeight;
 
 			let imgWidth, imgHeight;
-
 			if (canvasRatio > pageRatio) {
-				// Изображение шире - масштабируем по ширине
-				imgWidth = pageWidth - 2; // Оставляем отступы 1мм с каждой стороны
+				imgWidth = pageWidth - 2;
 				imgHeight = imgWidth / canvasRatio;
 			} else {
-				// Изображение выше - масштабируем по высоте
-				imgHeight = pageHeight - 2; // Оставляем отступы 1мм сверху и снизу
+				imgHeight = pageHeight - 2;
 				imgWidth = imgHeight * canvasRatio;
 			}
 
-			// Центрируем изображение на странице
 			const x = (pageWidth - imgWidth) / 2;
 			const y = (pageHeight - imgHeight) / 2;
 
-			// Добавляем изображение только на одну страницу
 			pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
-
 			pdf.save('плакат-москва.pdf');
 		} catch (error) {
 			console.error('Ошибка при создании PDF:', error);
 			alert('Произошла ошибка при создании PDF файла');
 
-			// Убираем классы в случае ошибки
-			const posterElement = document.querySelector('.moscow-poster-container');
-			if (posterElement) {
-				posterElement.classList.remove('pdf-export-mode');
-				const dateElements = posterElement.querySelectorAll('.poster-date-underline');
-				dateElements.forEach((el) => {
-					el.classList.remove('pdf-export-mode');
+			// В случае ошибки тоже восстанавливаем стили
+			elementsToRestore.forEach(({ element, properties }) => {
+				properties.forEach(property => {
+					element.style.removeProperty(property);
 				});
-			}
+			});
 		}
 	};
 
-	// Функция для экспорта в PNG высокого качества
+	// Функция для экспорта в PNG
 	const handleExportPNG = async () => {
 		const element = document.getElementById('moscow-poster');
-
 		if (!element) {
 			alert('Элемент плаката не найден!');
 			return;
 		}
 
+		const posterContainer = element.querySelector('.moscow-poster-container');
+		if (!posterContainer) return;
+
+		// Сохраняем элементы для восстановления
+		const elementsToRestore: Array<{ element: HTMLElement, properties: string[] }> = [];
+
 		try {
-			// Временно добавляем классы для экспорта в PNG
-			const dateElements = element.querySelectorAll('.poster-date-underline');
-			const posterContainer = element.querySelector('.moscow-poster-container');
-
-			if (posterContainer) {
-				posterContainer.classList.add('export-mode');
-			}
-
-			dateElements.forEach((el) => {
-				el.classList.add('export-mode');
+			// Находим все элементы с подчеркиванием дат и временно увеличиваем отступ
+			const dateUnderlines = posterContainer.querySelectorAll('.poster-date-underline');
+			dateUnderlines.forEach(element => {
+				const el = element as HTMLElement;
+				elementsToRestore.push({ element: el, properties: ['padding-bottom'] });
+				el.style.setProperty('padding-bottom', '15px', 'important'); // Меньше чем для PDF
 			});
 
-			// Создаем canvas с высоким разрешением для качественной печати
+			// Ждем применения изменений
+			await new Promise(resolve => setTimeout(resolve, 100));
+
 			const canvas = await html2canvas(element, {
-				scale: 2, // Высокое разрешение для качественной печати
+				scale: 2,
 				useCORS: true,
 				allowTaint: true,
 				backgroundColor: '#ffffff',
 				width: element.offsetWidth,
 				height: element.offsetHeight,
+				logging: false,
+				scrollX: 0,
+				scrollY: 0
 			});
 
-			// Убираем временные классы
-			if (posterContainer) {
-				posterContainer.classList.remove('export-mode');
-			}
-			dateElements.forEach((el) => {
-				el.classList.remove('export-mode');
+			// Восстанавливаем стили - удаляем все inline стили, которые мы добавили
+			elementsToRestore.forEach(({ element, properties }) => {
+				properties.forEach(property => {
+					element.style.removeProperty(property);
+				});
 			});
 
-			// Создаем ссылку для скачивания
+			// Скачиваем файл
 			const link = document.createElement('a');
 			link.download = 'плакат-москва.png';
 			link.href = canvas.toDataURL('image/png');
-
 			document.body.appendChild(link);
 			link.click();
 			document.body.removeChild(link);
@@ -362,18 +463,22 @@ export default function PosterGenerator() {
 			console.error('Ошибка при экспорте PNG:', error);
 			alert('Ошибка при создании PNG: ' + (error instanceof Error ? error.message : String(error)));
 
-			// Убираем классы в случае ошибки
-			const posterContainer = element.querySelector('.moscow-poster-container');
-			const dateElements = element.querySelectorAll('.poster-date-underline');
-
-			if (posterContainer) {
-				posterContainer.classList.remove('export-mode');
-			}
-			dateElements.forEach((el) => {
-				el.classList.remove('export-mode');
+			// В случае ошибки тоже восстанавливаем стили
+			elementsToRestore.forEach(({ element, properties }) => {
+				properties.forEach(property => {
+					element.style.removeProperty(property);
+				});
 			});
 		}
 	};
+
+	const getDayName = (index: number): string => {
+		const dayNames = ['Первый день', 'Второй день', 'Третий день', 'Четвертый день'];
+		return dayNames[index] || `${index + 1}-й день`;
+	};
+
+	// Убеждаемся, что dates всегда массив
+	const safeDates = Array.isArray(dates) ? dates : [];
 
 	return (
 		<div className="space-y-6">
@@ -404,181 +509,120 @@ export default function PosterGenerator() {
 									</div>
 								</CardHeader>
 								<CardContent className="space-y-6">
-									{/* Первый день */}
-									<div className="space-y-4">
-										<h3 className="font-semibold">Первый день</h3>
-										<div>
-											<Label htmlFor="date1">Дата</Label>
-											<div className="flex gap-2">
-												<Input
-													id="date1"
-													type="date"
-													value={dates.first.isoDate}
-													onChange={(e) => handleDateChange(e.target.value, 'first')}
-													onPaste={(e) => handleDatePaste(e, 'first')}
-													className="flex-1"
-												/>
-												{(dates.first.date || dates.first.timeStart || dates.first.timeEnd) && (
+									{/* Динамический список дат */}
+									{safeDates.map((dateItem, index) => (
+										<div key={dateItem.id} className="space-y-4 border-b pb-4 last:border-b-0">
+											<div className="flex items-center justify-between">
+												<h3 className="font-semibold">{getDayName(index)}</h3>
+												{safeDates.length > 1 && (
 													<Button
 														variant="outline"
 														size="sm"
-														onClick={() => clearDateAndTime('first')}
-														className="w-10 h-10 p-0"
+														onClick={() => removeDate(dateItem.id)}
+														className="text-red-600 hover:text-red-700"
 													>
 														<X className="w-4 h-4" />
 													</Button>
 												)}
 											</div>
-										</div>
-										<div className="grid grid-cols-2 gap-4">
 											<div>
-												<Label htmlFor="time1Start">Время начала</Label>
+												<Label htmlFor={`date${dateItem.id}`}>Дата</Label>
 												<div className="flex gap-2">
 													<Input
-														id="time1Start"
-														type="time"
-														value={dates.first.timeStart}
-														onChange={(e) => setDates(prev => ({
-															...prev,
-															first: { ...prev.first, timeStart: e.target.value }
-														}))}
+														id={`date${dateItem.id}`}
+														type="date"
+														value={dateItem.isoDate || ''}
+														onChange={(e) => handleDateChange(e.target.value, dateItem.id)}
+														onPaste={(e) => handleDatePaste(e, dateItem.id)}
 														className="flex-1"
 													/>
-													<Select onValueChange={(value) => handleQuickTimeSelect('first', 'start', value)}>
-														<SelectTrigger className="w-20">
-															<Clock className="w-4 h-4" />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value="15:00">15:00</SelectItem>
-															<SelectItem value="15:30">15:30</SelectItem>
-															<SelectItem value="16:00">16:00</SelectItem>
-															<SelectItem value="16:30">16:30</SelectItem>
-															<SelectItem value="17:00">17:00</SelectItem>
-															<SelectItem value="17:30">17:30</SelectItem>
-															<SelectItem value="18:00">18:00</SelectItem>
-															<SelectItem value="18:30">18:30</SelectItem>
-														</SelectContent>
-													</Select>
+													{(dateItem.date || dateItem.timeStart || dateItem.timeEnd) && (
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => clearDateAndTime(dateItem.id)}
+															className="w-10 h-10 p-0"
+														>
+															<X className="w-4 h-4" />
+														</Button>
+													)}
 												</div>
 											</div>
-											<div>
-												<Label htmlFor="time1End">Время окончания</Label>
-												<div className="flex gap-2">
-													<Input
-														id="time1End"
-														type="time"
-														value={dates.first.timeEnd}
-														onChange={(e) => setDates(prev => ({
-															...prev,
-															first: { ...prev.first, timeEnd: e.target.value }
-														}))}
-														className="flex-1"
-													/>
-													<Select onValueChange={(value) => handleQuickTimeSelect('first', 'end', value)}>
-														<SelectTrigger className="w-20">
-															<Clock className="w-4 h-4" />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value="18:00">18:00</SelectItem>
-															<SelectItem value="18:30">18:30</SelectItem>
-															<SelectItem value="19:00">19:00</SelectItem>
-															<SelectItem value="19:30">19:30</SelectItem>
-															<SelectItem value="20:00">20:00</SelectItem>
-															<SelectItem value="20:30">20:30</SelectItem>
-														</SelectContent>
-													</Select>
+											<div className="grid grid-cols-2 gap-4">
+												<div>
+													<Label htmlFor={`time${dateItem.id}Start`}>Время начала</Label>
+													<div className="flex gap-2">
+														<Input
+															id={`time${dateItem.id}Start`}
+															type="time"
+															value={dateItem.timeStart || ''}
+															onChange={(e) => handleTimeChange(dateItem.id, 'start', e.target.value)}
+															className="flex-1"
+														/>
+														<Select onValueChange={(value) => handleQuickTimeSelect(dateItem.id, 'start', value)}>
+															<SelectTrigger className="w-20">
+																<Clock className="w-4 h-4" />
+															</SelectTrigger>
+															<SelectContent>
+																<SelectItem value="15:00">15:00</SelectItem>
+																<SelectItem value="15:30">15:30</SelectItem>
+																<SelectItem value="16:00">16:00</SelectItem>
+																<SelectItem value="16:30">16:30</SelectItem>
+																<SelectItem value="17:00">17:00</SelectItem>
+																<SelectItem value="17:30">17:30</SelectItem>
+																<SelectItem value="18:00">18:00</SelectItem>
+																<SelectItem value="18:30">18:30</SelectItem>
+															</SelectContent>
+														</Select>
+													</div>
+												</div>
+												<div>
+													<Label htmlFor={`time${dateItem.id}End`}>Время окончания</Label>
+													<div className="flex gap-2">
+														<Input
+															id={`time${dateItem.id}End`}
+															type="time"
+															value={dateItem.timeEnd || ''}
+															onChange={(e) => handleTimeChange(dateItem.id, 'end', e.target.value)}
+															className="flex-1"
+														/>
+														<Select onValueChange={(value) => handleQuickTimeSelect(dateItem.id, 'end', value)}>
+															<SelectTrigger className="w-20">
+																<Clock className="w-4 h-4" />
+															</SelectTrigger>
+															<SelectContent>
+																<SelectItem value="18:00">18:00</SelectItem>
+																<SelectItem value="18:30">18:30</SelectItem>
+																<SelectItem value="19:00">19:00</SelectItem>
+																<SelectItem value="19:30">19:30</SelectItem>
+																<SelectItem value="20:00">20:00</SelectItem>
+																<SelectItem value="20:30">20:30</SelectItem>
+															</SelectContent>
+														</Select>
+													</div>
 												</div>
 											</div>
 										</div>
-									</div>
+									))}
 
-									{/* Второй день */}
-									<div className="space-y-4">
-										<h3 className="font-semibold">Второй день</h3>
-										<div>
-											<Label htmlFor="date2">Дата</Label>
-											<div className="flex gap-2">
-												<Input
-													id="date2"
-													type="date"
-													value={dates.second.isoDate}
-													onChange={(e) => handleDateChange(e.target.value, 'second')}
-													onPaste={(e) => handleDatePaste(e, 'second')}
-													className="flex-1"
-												/>
-												{(dates.second.date || dates.second.timeStart || dates.second.timeEnd) && (
-													<Button
-														variant="outline"
-														size="sm"
-														onClick={() => clearDateAndTime('second')}
-														className="w-10 h-10 p-0"
-													>
-														<X className="w-4 h-4" />
-													</Button>
-												)}
-											</div>
+									{/* Кнопка добавить дату */}
+									{safeDates.length < 4 && (
+										<Button
+											onClick={addDate}
+											variant="outline"
+											className="w-full"
+										>
+											<Plus className="w-4 h-4 mr-2" />
+											Добавить дату
+										</Button>
+									)}
+
+									{/* Предупреждение о лимите */}
+									{safeDates.length >= 4 && (
+										<div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
+											<strong>Внимание:</strong> Максимум 4 даты. Больше не поместится на плакате.
 										</div>
-										<div className="grid grid-cols-2 gap-4">
-											<div>
-												<Label htmlFor="time2Start">Время начала</Label>
-												<div className="flex gap-2">
-													<Input
-														id="time2Start"
-														type="time"
-														value={dates.second.timeStart}
-														onChange={(e) => setDates(prev => ({
-															...prev,
-															second: { ...prev.second, timeStart: e.target.value }
-														}))}
-														className="flex-1"
-													/>
-													<Select onValueChange={(value) => handleQuickTimeSelect('second', 'start', value)}>
-														<SelectTrigger className="w-20">
-															<Clock className="w-4 h-4" />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value="15:00">15:00</SelectItem>
-															<SelectItem value="15:30">15:30</SelectItem>
-															<SelectItem value="16:00">16:00</SelectItem>
-															<SelectItem value="16:30">16:30</SelectItem>
-															<SelectItem value="17:00">17:00</SelectItem>
-															<SelectItem value="17:30">17:30</SelectItem>
-															<SelectItem value="18:00">18:00</SelectItem>
-															<SelectItem value="18:30">18:30</SelectItem>
-														</SelectContent>
-													</Select>
-												</div>
-											</div>
-											<div>
-												<Label htmlFor="time2End">Время окончания</Label>
-												<div className="flex gap-2">
-													<Input
-														id="time2End"
-														type="time"
-														value={dates.second.timeEnd}
-														onChange={(e) => setDates(prev => ({
-															...prev,
-															second: { ...prev.second, timeEnd: e.target.value }
-														}))}
-														className="flex-1"
-													/>
-													<Select onValueChange={(value) => handleQuickTimeSelect('second', 'end', value)}>
-														<SelectTrigger className="w-20">
-															<Clock className="w-4 h-4" />
-														</SelectTrigger>
-														<SelectContent>
-															<SelectItem value="18:00">18:00</SelectItem>
-															<SelectItem value="18:30">18:30</SelectItem>
-															<SelectItem value="19:00">19:00</SelectItem>
-															<SelectItem value="19:30">19:30</SelectItem>
-															<SelectItem value="20:00">20:00</SelectItem>
-															<SelectItem value="20:30">20:30</SelectItem>
-														</SelectContent>
-													</Select>
-												</div>
-											</div>
-										</div>
-									</div>
+									)}
 
 									{/* Телефон */}
 									<div className="space-y-4">
@@ -597,7 +641,7 @@ export default function PosterGenerator() {
 												<Input
 													id="phone"
 													type="tel"
-													value={phone}
+													value={phone || ''}
 													onChange={(e) => setPhone(e.target.value)}
 													placeholder="8 (499) 652-62-11"
 												/>
@@ -609,11 +653,11 @@ export default function PosterGenerator() {
 									<div className="space-y-4">
 										<h3 className="font-semibold">Экспорт</h3>
 										<div className="grid grid-cols-2 gap-3">
-											<Button onClick={handleExportPNG} variant="outline">
+											<Button onClick={handleExportPNG} className="gradient-bg border-0">
 												<Download className="w-4 h-4 mr-2" />
 												PNG
 											</Button>
-											<Button onClick={handleExportPDF} className="gradient-bg border-0">
+											<Button onClick={handleExportPDF} variant="outline">
 												<Download className="w-4 h-4 mr-2" />
 												PDF
 											</Button>
@@ -634,7 +678,7 @@ export default function PosterGenerator() {
 										{/* Принудительная светлая тема для плаката */}
 										<div className="light">
 											<div id="moscow-poster" className="moscow-poster-container">
-												<MoscowPoster dates={dates} phone={phone} showPhone={showPhone} />
+												<MoscowPoster dates={safeDates} phone={phone} showPhone={showPhone} />
 											</div>
 										</div>
 									</div>

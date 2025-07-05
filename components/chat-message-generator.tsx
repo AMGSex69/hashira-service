@@ -86,7 +86,7 @@ export default function ChatMessageGenerator() {
 
 			// Добавляем информацию об обходах
 			if (item.hasRounds) {
-				messageText += `Обходы: ${item.roundDates}\n`
+				messageText += `Обходы:\n${item.roundDates}\n`
 			} else {
 				messageText += "Обходов нет\n"
 			}

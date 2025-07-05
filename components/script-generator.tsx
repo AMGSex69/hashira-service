@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ClipboardCopy, FileDown, FileText, Printer, Calendar, Clock, MessageSquarePlus, Sparkles } from "lucide-react"
+import { ClipboardCopy, FileDown, FileText, Printer, Calendar, Clock, MessageSquarePlus, Sparkles, Plus, Minus, Table, Image } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { scriptTemplates, smartIntercomInfo } from "@/lib/script-templates"
 import { formatDate, parseCustomDate, parseCustomTime } from "@/lib/utils"
@@ -41,6 +41,7 @@ export default function ScriptGenerator() {
 		topic: "",
 		completionDate: "", // Новое поле - дата завершения ОСС
 		completionDateText: "",
+		ossNumber: "", // Новое поле - номер ОСС
 		electronicDate: "",
 		electronicDateText: "",
 		electronicTime: "09:00",
@@ -49,21 +50,31 @@ export default function ScriptGenerator() {
 		paperDateText: "",
 		paperTime: "09:00",
 		paperTimeText: "09:00",
-		round1StartDate: "",
-		round1StartDateText: "",
-		round1StartTime: "18:30",
-		round1StartTimeText: "18:30",
-		round1EndTime: "20:30",
-		round1EndTimeText: "20:30",
-		round2StartDate: "",
-		round2StartDateText: "",
-		round2StartTime: "18:30",
-		round2StartTimeText: "18:30",
-		round2EndTime: "20:30",
-		round2EndTimeText: "20:30",
 		administrator: "",
 		adminAddress: "",
 	})
+
+	// Separate state for rounds as an array
+	const [rounds, setRounds] = useState([
+		{
+			id: 1,
+			startDate: "",
+			startDateText: "",
+			startTime: "18:30",
+			startTimeText: "18:30",
+			endTime: "20:30",
+			endTimeText: "20:30",
+		},
+		{
+			id: 2,
+			startDate: "",
+			startDateText: "",
+			startTime: "18:30",
+			startTimeText: "18:30",
+			endTime: "20:30",
+			endTimeText: "20:30",
+		},
+	])
 	const [generatedScript, setGeneratedScript] = useState("")
 	const [editableScript, setEditableScript] = useState("")
 	const [showGoogleDocDialog, setShowGoogleDocDialog] = useState(false)
@@ -80,6 +91,7 @@ export default function ScriptGenerator() {
 			try {
 				const parsedData = JSON.parse(savedData)
 				setFormData(parsedData.formData || formData)
+				setRounds(parsedData.rounds || rounds)
 				setScriptType(parsedData.scriptType || "ego-rounds")
 				setUseManualInput(parsedData.useManualInput || false)
 				setIncludeSmartIntercomInfo(parsedData.includeSmartIntercomInfo || false)
@@ -100,6 +112,7 @@ export default function ScriptGenerator() {
 
 		const dataToSave = {
 			formData,
+			rounds,
 			scriptType,
 			useManualInput,
 			includeSmartIntercomInfo,
@@ -109,7 +122,7 @@ export default function ScriptGenerator() {
 			fileName,
 		}
 		localStorage.setItem("scriptGeneratorData", JSON.stringify(dataToSave))
-	}, [formData, scriptType, useManualInput, includeSmartIntercomInfo, isIndividual, generatedScript, editableScript, fileName, isLoaded])
+	}, [formData, rounds, scriptType, useManualInput, includeSmartIntercomInfo, isIndividual, generatedScript, editableScript, fileName, isLoaded])
 
 	// Эффект для автоматического обновления дат от даты завершения ОСС (только в режиме календаря)
 	useEffect(() => {
@@ -251,6 +264,7 @@ export default function ScriptGenerator() {
 			topic: "",
 			completionDate: "",
 			completionDateText: "",
+			ossNumber: "",
 			electronicDate: "",
 			electronicDateText: "",
 			electronicTime: "09:00",
@@ -259,23 +273,31 @@ export default function ScriptGenerator() {
 			paperDateText: "",
 			paperTime: "09:00",
 			paperTimeText: "09:00",
-			round1StartDate: "",
-			round1StartDateText: "",
-			round1StartTime: "18:30",
-			round1StartTimeText: "18:30",
-			round1EndTime: "20:30",
-			round1EndTimeText: "20:30",
-			round2StartDate: "",
-			round2StartDateText: "",
-			round2StartTime: "18:30",
-			round2StartTimeText: "18:30",
-			round2EndTime: "20:30",
-			round2EndTimeText: "20:30",
 			administrator: "",
 			adminAddress: "",
 		}
 
 		setFormData(defaultFormData)
+		setRounds([
+			{
+				id: 1,
+				startDate: "",
+				startDateText: "",
+				startTime: "18:30",
+				startTimeText: "18:30",
+				endTime: "20:30",
+				endTimeText: "20:30",
+			},
+			{
+				id: 2,
+				startDate: "",
+				startDateText: "",
+				startTime: "18:30",
+				startTimeText: "18:30",
+				endTime: "20:30",
+				endTimeText: "20:30",
+			},
+		])
 		setScriptType("ego-rounds")
 		setGeneratedScript("")
 		setEditableScript("")
@@ -290,6 +312,87 @@ export default function ScriptGenerator() {
 		toast({
 			title: "Форма сброшена",
 			description: "Все поля формы сброшены до значений по умолчанию",
+		})
+	}
+
+	const addRound = () => {
+		const newRound = {
+			id: Math.max(...rounds.map(r => r.id)) + 1,
+			startDate: "",
+			startDateText: "",
+			startTime: "18:30",
+			startTimeText: "18:30",
+			endTime: "20:30",
+			endTimeText: "20:30",
+		}
+		setRounds([...rounds, newRound])
+	}
+
+	const removeRound = (id: number) => {
+		if (rounds.length > 1) {
+			setRounds(rounds.filter(round => round.id !== id))
+		}
+	}
+
+	const getOrdinalNumber = (index: number) => {
+		const ordinals = [
+			"Первый", "Второй", "Третий", "Четвертый", "Пятый",
+			"Шестой", "Седьмой", "Восьмой", "Девятый", "Десятый"
+		]
+		return ordinals[index] || `${index + 1}-й`
+	}
+
+	const updateRound = (id: number, field: string, value: string) => {
+		setRounds(prevRounds => {
+			const updatedRounds = prevRounds.map(round =>
+				round.id === id ? { ...round, [field]: value } : round
+			)
+
+			// Sync date/time picker values with text inputs when in picker mode
+			if (!useManualInput) {
+				if (field.endsWith("Date") && value) {
+					const textFieldName = field.replace("Date", "DateText")
+					const formattedDate = formatDate(value)
+					return updatedRounds.map(round =>
+						round.id === id ? { ...round, [textFieldName]: formattedDate } : round
+					)
+				} else if (field.endsWith("Time")) {
+					const textFieldName = field.replace("Time", "TimeText")
+					return updatedRounds.map(round =>
+						round.id === id ? { ...round, [textFieldName]: value } : round
+					)
+				}
+			} else {
+				// Sync text inputs with date/time pickers when in manual mode
+				if (field.endsWith("DateText")) {
+					const pickerName = field.replace("Text", "")
+					try {
+						const parsedDate = parseCustomDate(value)
+						if (parsedDate) {
+							const isoDate = parsedDate.toISOString().split("T")[0]
+							return updatedRounds.map(round =>
+								round.id === id ? { ...round, [pickerName]: isoDate } : round
+							)
+						}
+					} catch (error) {
+						// Invalid date format, don't update the picker
+					}
+				} else if (field.endsWith("TimeText")) {
+					const pickerName = field.replace("Text", "")
+					try {
+						const timeValue = parseCustomTime(value)
+						if (timeValue) {
+							return updatedRounds.map(round =>
+								round.id === id ? { ...round, [pickerName]: timeValue } : round
+							)
+						}
+					} catch (error) {
+						// Invalid time format, don't update the picker
+					}
+				}
+			}
+
+			return updatedRounds
 		})
 	}
 
@@ -321,26 +424,27 @@ export default function ScriptGenerator() {
 		// Format rounds dates
 		let roundDatesText = ""
 
-		if (useManualInput) {
-			// Use text inputs directly
-			if (formData.round1StartDateText) {
-				if (formData.round2StartDateText) {
-					roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText} и ${formData.round2StartDateText} с ${formData.round2StartTimeText} до ${formData.round2EndTimeText}`
-				} else {
-					roundDatesText = `${formData.round1StartDateText} с ${formData.round1StartTimeText} до ${formData.round1EndTimeText}`
-				}
-			}
-		} else {
-			// Use date pickers and format
-			if (formData.round1StartDate) {
-				const round1Date = formatDate(formData.round1StartDate)
+		const validRounds = rounds.filter(round =>
+			useManualInput ? round.startDateText : round.startDate
+		)
 
-				if (formData.round2StartDate) {
-					const round2Date = formatDate(formData.round2StartDate)
-					roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime} и ${round2Date} с ${formData.round2StartTime} до ${formData.round2EndTime}`
-				} else {
-					roundDatesText = `${round1Date} с ${formData.round1StartTime} до ${formData.round1EndTime}`
-				}
+		if (validRounds.length > 0) {
+			const roundTexts = validRounds.map(round => {
+				const dateText = useManualInput ? round.startDateText : formatDate(round.startDate)
+				const startTime = useManualInput ? round.startTimeText : round.startTime
+				const endTime = useManualInput ? round.endTimeText : round.endTime
+				return `**${dateText} с ${startTime} до ${endTime}**`
+			})
+
+			if (roundTexts.length === 1) {
+				// Один обход
+				roundDatesText = roundTexts[0]
+			} else if (roundTexts.length === 2) {
+				// Два обхода - через запятую и "и"
+				roundDatesText = `${roundTexts[0]} и ${roundTexts[1]}`
+			} else {
+				// Больше двух обходов - каждый с новой строки, ВСЕ со звездочками
+				roundDatesText = `\n${roundTexts.join("\n")}\n`
 			}
 		}
 
@@ -349,7 +453,10 @@ export default function ScriptGenerator() {
 		const paperTimeValue = useManualInput ? formData.paperTimeText : formData.paperTime
 
 		// Get the appropriate offices list based on district and script type
-		const officesList = getOfficesList(formData.district, scriptType, roundDatesText)
+		const officesList = getOfficesList(formData.district, scriptType, roundDatesText, validRounds.length)
+
+		// Get the correct grammatical form for rounds phrase
+		const roundsPhrase = validRounds.length === 1 ? "состоится поквартирный обход" : "состоятся поквартирные обходы"
 
 		let script = template
 			.replace("{{address}}", `**${formData.address}**`)
@@ -360,7 +467,9 @@ export default function ScriptGenerator() {
 
 		// Add script-specific replacements
 		if (scriptType === "not-ego-with-rounds") {
-			script = script.replace("{{roundDates}}", `**${roundDatesText}**`)
+			script = script
+				.replace("{{roundDates}}", roundDatesText)
+				.replace("{{roundsPhrase}}", roundsPhrase)
 		}
 
 		if (scriptType === "not-ego-no-rounds" || scriptType === "not-ego-with-rounds") {
@@ -392,6 +501,8 @@ export default function ScriptGenerator() {
 			description: "Скрипт успешно сгенерирован и готов к использованию",
 		})
 	}
+
+
 
 	const copyToClipboard = async () => {
 		try {
@@ -648,20 +759,15 @@ export default function ScriptGenerator() {
 		// Форматируем даты обходов для сообщения
 		let roundDatesFormatted = ""
 		if (hasRounds) {
-			if (formData.round1StartDate) {
-				const date1 = new Date(formData.round1StartDate)
-				const formattedDate1 = `${date1.getDate().toString().padStart(2, "0")}.${(date1.getMonth() + 1)
-					.toString()
-					.padStart(2, "0")}.${date1.getFullYear()}`
-				roundDatesFormatted = `${formattedDate1} ${formData.round1StartTime}-${formData.round1EndTime}`
-
-				if (formData.round2StartDate) {
-					const date2 = new Date(formData.round2StartDate)
-					const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1)
+			const validRounds = rounds.filter(round => round.startDate)
+			if (validRounds.length > 0) {
+				roundDatesFormatted = validRounds.map(round => {
+					const date = new Date(round.startDate)
+					const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1)
 						.toString()
-						.padStart(2, "0")}.${date2.getFullYear()}`
-					roundDatesFormatted += `\n${formattedDate2} ${formData.round2StartTime}-${formData.round2EndTime}`
-				}
+						.padStart(2, "0")}.${date.getFullYear()}`
+					return `${formattedDate} ${round.startTime}-${round.endTime}`
+				}).join("\n")
 			}
 		}
 
@@ -681,6 +787,174 @@ export default function ScriptGenerator() {
 		toast({
 			title: "Адрес добавлен",
 			description: "Адрес успешно добавлен в сообщение для чата",
+		})
+	}
+
+	// Функция для переноса данных в Excel-процессор
+	const transferToExcel = () => {
+		if (!formData.address) {
+			toast({
+				title: "Ошибка",
+				description: "Заполните адрес дома",
+				variant: "destructive",
+			})
+			return
+		}
+
+		if (!formData.district) {
+			toast({
+				title: "Ошибка",
+				description: "Выберите округ",
+				variant: "destructive",
+			})
+			return
+		}
+
+		if (!formData.completionDate) {
+			toast({
+				title: "Ошибка",
+				description: "Заполните дату завершения ОСС",
+				variant: "destructive",
+			})
+			return
+		}
+
+		// Преобразуем обходы в формат для Excel-процессора
+		const excelRounds = rounds
+			.filter(round => useManualInput ? round.startDateText : round.startDate)
+			.map((round, index) => ({
+				id: (index + 1).toString(),
+				type: "date" as const,
+				status: "cancelled" as const,
+				date: useManualInput ? (parseCustomDate(round.startDateText)?.toISOString().split("T")[0] || "") : round.startDate,
+				startTime: useManualInput ? round.startTimeText : round.startTime,
+				endTime: useManualInput ? round.endTimeText : round.endTime,
+			}))
+
+		// Если нет обходов, создаем один пустой
+		if (excelRounds.length === 0) {
+			excelRounds.push({
+				id: "1",
+				type: "date" as const,
+				status: "cancelled" as const,
+				date: "",
+				startTime: "18:00",
+				endTime: "20:30",
+			})
+		}
+
+		// Создаем объект данных для Excel-процессора
+		const excelData = {
+			address: formData.address,
+			district: formData.district,
+			ossNumber: formData.ossNumber || "",
+			ossDate: formData.completionDate,
+			rounds: excelRounds,
+		}
+
+		// Сохраняем данные в localStorage для Excel-процессора
+		localStorage.setItem("excelProcessorData", JSON.stringify(excelData))
+
+		toast({
+			title: "Данные переданы",
+			description: "Данные переданы в Excel-процессор. Перейдите на вкладку обработки таблиц.",
+		})
+	}
+
+	// Функция для переноса данных в генератор плакатов
+	const transferToPoster = () => {
+		// Определяем, есть ли обходы в скрипте
+		const hasRounds = scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds"
+
+		if (!hasRounds) {
+			toast({
+				title: "Ошибка",
+				description: "Плакаты создаются только для скриптов с обходами",
+				variant: "destructive",
+			})
+			return
+		}
+
+		// Получаем обходы с заполненными датами
+		const validRounds = rounds.filter(round => {
+			const hasDate = useManualInput ? round.startDateText : round.startDate
+			const hasTime = useManualInput ? round.startTimeText : round.startTime
+			return hasDate && hasTime
+		})
+
+		if (validRounds.length === 0) {
+			toast({
+				title: "Ошибка",
+				description: "Заполните даты и время для обходов",
+				variant: "destructive",
+			})
+			return
+		}
+
+		if (validRounds.length > 4) {
+			toast({
+				title: "Ошибка",
+				description: "Максимальное количество дат для плаката: 4",
+				variant: "destructive",
+			})
+			return
+		}
+
+		// Функция для форматирования даты для плаката (без "г.")
+		const formatDateForPoster = (dateString: string): string => {
+			const date = new Date(dateString)
+			const months = [
+				'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+				'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+			];
+
+			const day = date.getDate();
+			const month = months[date.getMonth()];
+
+			return `${day} ${month}`;
+		}
+
+		// Преобразуем обходы в формат для генератора плакатов
+		const posterDates = validRounds.map((round, index) => {
+			let isoDate = ""
+			let displayDate = ""
+
+			if (useManualInput) {
+				// Если ручной ввод, парсим текстовую дату
+				const parsedDate = parseCustomDate(round.startDateText)
+				if (parsedDate) {
+					isoDate = parsedDate.toISOString().split("T")[0]
+					displayDate = formatDateForPoster(isoDate)
+				}
+			} else {
+				// Если календарь, используем дату напрямую
+				isoDate = round.startDate
+				displayDate = formatDateForPoster(isoDate)
+			}
+
+			return {
+				id: index + 1,
+				date: displayDate,
+				isoDate: isoDate,
+				timeStart: useManualInput ? round.startTimeText : round.startTime,
+				timeEnd: useManualInput ? round.endTimeText : round.endTime,
+			}
+		})
+
+		// Создаем объект данных для генератора плакатов
+		const posterData = {
+			dates: posterDates,
+			phone: '8 (499) 652-62-11',
+			showPhone: true,
+			autoGenerate: true // Флаг для автоматической генерации плаката
+		}
+
+		// Сохраняем данные в localStorage для генератора плакатов
+		localStorage.setItem("posterGeneratorData", JSON.stringify(posterData))
+
+		toast({
+			title: "Данные переданы",
+			description: "Данные переданы в генератор плакатов и плакат будет автоматически сгенерирован.",
 		})
 	}
 
@@ -860,182 +1134,122 @@ export default function ScriptGenerator() {
 					<div>
 						<Label>Даты поквартирных обходов</Label>
 
-						{/* Первый обход */}
-						<div className="border p-4 rounded-md mt-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-							<Label className="text-base font-medium">Первый обход</Label>
-							{useManualInput ? (
-								<div className="mt-2 space-y-2">
-									<Label htmlFor="round1StartDateText" className="text-sm text-muted-foreground">
-										Дата и время обхода
+						{rounds.map((round, index) => (
+							<div key={round.id} className="border p-4 rounded-md mt-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+								<div className="flex items-center justify-between mb-2">
+									<Label className="text-base font-medium">
+										{getOrdinalNumber(index)} обход
 									</Label>
-									<div className="flex items-center">
-										<Input
-											id="round1StartDateText"
-											name="round1StartDateText"
-											placeholder="Например: 19 мая 2025"
-											value={formData.round1StartDateText}
-											onChange={handleTextInputChange}
-											className="w-1/2"
-										/>
-										<span className="mx-2 text-sm">с</span>
-										<Input
-											id="round1StartTimeText"
-											name="round1StartTimeText"
-											placeholder="18:30"
-											value={formData.round1StartTimeText}
-											onChange={handleTextInputChange}
-											className="w-1/5"
-										/>
-										<span className="mx-2 text-sm">до</span>
-										<Input
-											id="round1EndTimeText"
-											name="round1EndTimeText"
-											placeholder="20:30"
-											value={formData.round1EndTimeText}
-											onChange={handleTextInputChange}
-											className="w-1/5"
-										/>
-									</div>
+									{rounds.length > 1 && (
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={() => removeRound(round.id)}
+											className="text-red-600 hover:text-red-700"
+										>
+											Удалить
+										</Button>
+									)}
 								</div>
-							) : (
-								<div className="mt-2 space-y-2">
-									<Label htmlFor="round1StartDate" className="text-sm text-muted-foreground">
-										Дата обхода
-									</Label>
-									<Input
-										id="round1StartDate"
-										name="round1StartDate"
-										type="date"
-										value={formData.round1StartDate}
-										onChange={handleInputChange}
-										onPaste={(e) => handleRoundDatePaste(e, "round1StartDate")}
-									/>
 
-									<div className="grid grid-cols-2 gap-4">
-										<div>
-											<Label htmlFor="round1StartTime" className="text-sm text-muted-foreground">
-												Время начала
-											</Label>
-											<div className="relative">
-												<Input
-													id="round1StartTime"
-													name="round1StartTime"
-													type="time"
-													value={formData.round1StartTime}
-													onChange={handleInputChange}
-													className="pr-10"
-												/>
-												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-											</div>
-										</div>
-										<div>
-											<Label htmlFor="round1EndTime" className="text-sm text-muted-foreground">
-												Время окончания
-											</Label>
-											<div className="relative">
-												<Input
-													id="round1EndTime"
-													name="round1EndTime"
-													type="time"
-													value={formData.round1EndTime}
-													onChange={handleInputChange}
-													className="pr-10"
-												/>
-												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-											</div>
+								{useManualInput ? (
+									<div className="mt-2 space-y-2">
+										<Label className="text-sm text-muted-foreground">
+											Дата и время обхода
+										</Label>
+										<div className="flex items-center">
+											<Input
+												placeholder="Например: 19 мая 2025"
+												value={round.startDateText}
+												onChange={(e) => updateRound(round.id, "startDateText", e.target.value)}
+												className="w-1/2"
+											/>
+											<span className="mx-2 text-sm">с</span>
+											<Input
+												placeholder="18:30"
+												value={round.startTimeText}
+												onChange={(e) => updateRound(round.id, "startTimeText", e.target.value)}
+												className="w-1/5"
+											/>
+											<span className="mx-2 text-sm">до</span>
+											<Input
+												placeholder="20:30"
+												value={round.endTimeText}
+												onChange={(e) => updateRound(round.id, "endTimeText", e.target.value)}
+												className="w-1/5"
+											/>
 										</div>
 									</div>
-								</div>
-							)}
-						</div>
+								) : (
+									<div className="mt-2 space-y-2">
+										<Label className="text-sm text-muted-foreground">
+											Дата обхода
+										</Label>
+										<Input
+											type="date"
+											value={round.startDate}
+											onChange={(e) => updateRound(round.id, "startDate", e.target.value)}
+											onPaste={(e) => {
+												e.preventDefault()
+												const pastedText = e.clipboardData.getData("text")
+												const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/
+												const match = pastedText.match(datePattern)
+												if (match) {
+													const day = match[1]
+													const month = match[2]
+													const year = match[3]
+													const formattedDate = `${year}-${month}-${day}`
+													updateRound(round.id, "startDate", formattedDate)
+												}
+											}}
+										/>
 
-						{/* Второй обход */}
-						<div className="border p-4 rounded-md mt-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-							<Label className="text-base font-medium">Второй обход</Label>
-							{useManualInput ? (
-								<div className="mt-2 space-y-2">
-									<Label htmlFor="round2StartDateText" className="text-sm text-muted-foreground">
-										Дата и время обхода
-									</Label>
-									<div className="flex items-center">
-										<Input
-											id="round2StartDateText"
-											name="round2StartDateText"
-											placeholder="Например: 20 мая 2025"
-											value={formData.round2StartDateText}
-											onChange={handleTextInputChange}
-											className="w-1/2"
-										/>
-										<span className="mx-2 text-sm">с</span>
-										<Input
-											id="round2StartTimeText"
-											name="round2StartTimeText"
-											placeholder="18:30"
-											value={formData.round2StartTimeText}
-											onChange={handleTextInputChange}
-											className="w-1/5"
-										/>
-										<span className="mx-2 text-sm">до</span>
-										<Input
-											id="round2EndTimeText"
-											name="round2EndTimeText"
-											placeholder="20:30"
-											value={formData.round2EndTimeText}
-											onChange={handleTextInputChange}
-											className="w-1/5"
-										/>
+										<div className="grid grid-cols-2 gap-4">
+											<div>
+												<Label className="text-sm text-muted-foreground">
+													Время начала
+												</Label>
+												<div className="relative">
+													<Input
+														type="time"
+														value={round.startTime}
+														onChange={(e) => updateRound(round.id, "startTime", e.target.value)}
+														className="pr-10"
+													/>
+													<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+												</div>
+											</div>
+											<div>
+												<Label className="text-sm text-muted-foreground">
+													Время окончания
+												</Label>
+												<div className="relative">
+													<Input
+														type="time"
+														value={round.endTime}
+														onChange={(e) => updateRound(round.id, "endTime", e.target.value)}
+														className="pr-10"
+													/>
+													<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+												</div>
+											</div>
+										</div>
 									</div>
-								</div>
-							) : (
-								<div className="mt-2 space-y-2">
-									<Label htmlFor="round2StartDate" className="text-sm text-muted-foreground">
-										Дата обхода
-									</Label>
-									<Input
-										id="round2StartDate"
-										name="round2StartDate"
-										type="date"
-										value={formData.round2StartDate}
-										onChange={handleInputChange}
-										onPaste={(e) => handleRoundDatePaste(e, "round2StartDate")}
-									/>
+								)}
+							</div>
+						))}
 
-									<div className="grid grid-cols-2 gap-4">
-										<div>
-											<Label htmlFor="round2StartTime" className="text-sm text-muted-foreground">
-												Время начала
-											</Label>
-											<div className="relative">
-												<Input
-													id="round2StartTime"
-													name="round2StartTime"
-													type="time"
-													value={formData.round2StartTime}
-													onChange={handleInputChange}
-													className="pr-10"
-												/>
-												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-											</div>
-										</div>
-										<div>
-											<Label htmlFor="round2EndTime" className="text-sm text-muted-foreground">
-												Время окончания
-											</Label>
-											<div className="relative">
-												<Input
-													id="round2EndTime"
-													name="round2EndTime"
-													type="time"
-													value={formData.round2EndTime}
-													onChange={handleInputChange}
-													className="pr-10"
-												/>
-												<Clock className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-											</div>
-										</div>
-									</div>
-								</div>
-							)}
+						<div className="mt-4 flex justify-center">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={addRound}
+								className="text-sm"
+							>
+								+ Добавить обход
+							</Button>
 						</div>
 					</div>
 				)}
@@ -1127,6 +1341,21 @@ export default function ScriptGenerator() {
 							onChange={handleInputChange}
 							className="bg-white dark:bg-gray-800"
 						/>
+					</div>
+
+					<div className="space-y-2">
+						<Label htmlFor="ossNumber">Номер ОСС</Label>
+						<Input
+							id="ossNumber"
+							name="ossNumber"
+							placeholder="Например: 12345"
+							value={formData.ossNumber}
+							onChange={handleInputChange}
+							className="bg-white dark:bg-gray-800"
+						/>
+						<p className="text-sm text-muted-foreground">
+							Если заполнено, будет передано в Excel-процессор
+						</p>
 					</div>
 
 					<div className="space-y-2">
@@ -1324,6 +1553,26 @@ export default function ScriptGenerator() {
 							>
 								<MessageSquarePlus className="h-4 w-4" />
 							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								onClick={transferToExcel}
+								title="Перенести данные в Excel-процессор"
+								className="rounded-full"
+							>
+								<Table className="h-4 w-4" />
+							</Button>
+							{(scriptType === "ego-rounds" || scriptType === "not-ego-with-rounds") && (
+								<Button
+									variant="outline"
+									size="icon"
+									onClick={transferToPoster}
+									title="Перенести данные в генератор плакатов"
+									className="rounded-full"
+								>
+									<Image className="h-4 w-4" />
+								</Button>
+							)}
 							<Button
 								variant="outline"
 								size="icon"

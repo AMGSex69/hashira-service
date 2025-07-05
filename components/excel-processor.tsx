@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { AlertCircle, FileSpreadsheet, Upload, Table, ShoppingCart, Trash2, Plus, Download } from "lucide-react"
+import { AlertCircle, FileSpreadsheet, Upload, Table, ShoppingCart, Trash2, Plus, Download, X } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
@@ -20,6 +20,16 @@ import { Badge } from "@/components/ui/badge"
 
 const DISTRICTS = ["ЦАО", "САО", "СВАО", "ВАО", "ЮВАО", "ЮАО", "ЮЗАО", "ЗАО", "СЗАО", "Зеленоград", "Новая Москва"]
 
+// Интерфейс для одного обхода
+interface Round {
+	id: string
+	type: "date" | "status"
+	status: "cancelled" | "none"
+	date: string
+	startTime: string
+	endTime: string
+}
+
 // Интерфейс для элемента корзины
 interface CartItem {
 	id: string
@@ -27,18 +37,8 @@ interface CartItem {
 	district: string
 	ossNumber: string
 	ossDate: string
-	file: File
-	round1Type: string
-	round1Status: string
-	round1Date: string
-	round1StartTime: string
-	round1EndTime: string
-	useRound2: boolean
-	round2Type: string
-	round2Status: string
-	round2Date: string
-	round2StartTime: string
-	round2EndTime: string
+	file: File | null
+	rounds: Round[]
 }
 
 export default function ExcelProcessor() {
@@ -56,20 +56,55 @@ export default function ExcelProcessor() {
 	const [ossNumber, setOssNumber] = useState("")
 	const [ossDate, setOssDate] = useState("")
 
-	// Состояния для дат обходов
-	const [round1Type, setRound1Type] = useState("date") // "date" или "status"
-	const [round1Status, setRound1Status] = useState("cancelled") // "cancelled" или "none"
-	const [round1Date, setRound1Date] = useState("")
-	const [round1StartTime, setRound1StartTime] = useState("18:00")
-	const [round1EndTime, setRound1EndTime] = useState("20:30")
+	// Состояние для обходов
+	const [rounds, setRounds] = useState<Round[]>([
+		{
+			id: "1",
+			type: "date",
+			status: "cancelled",
+			date: "",
+			startTime: "18:00",
+			endTime: "20:30"
+		}
+	])
 
-	const [useRound2, setUseRound2] = useState(false)
-	const [round2Type, setRound2Type] = useState("date") // "date" или "status"
-	const [round2Status, setRound2Status] = useState("cancelled") // "cancelled" или "none"
-	const [round2Date, setRound2Date] = useState("")
-	const [round2StartTime, setRound2StartTime] = useState("18:00")
-	const [round2EndTime, setRound2EndTime] = useState("20:30")
 	const [isLoaded, setIsLoaded] = useState(false)
+	const [editingItems, setEditingItems] = useState<Set<string>>(new Set())
+
+	// Функция для получения порядкового номера обхода
+	const getOrdinalNumber = (index: number): string => {
+		const ordinals = ["Первый", "Второй", "Третий", "Четвертый", "Пятый", "Шестой", "Седьмой", "Восьмой", "Девятый", "Десятый"]
+		return ordinals[index] || `${index + 1}-й`
+	}
+
+	// Функция для добавления обхода
+	const addRound = () => {
+		const newRound: Round = {
+			id: Date.now().toString(),
+			type: "date",
+			status: "cancelled",
+			date: "",
+			startTime: "18:00",
+			endTime: "20:30"
+		}
+		setRounds(prev => [...prev, newRound])
+	}
+
+	// Функция для удаления обхода
+	const removeRound = (id: string) => {
+		if (rounds.length > 1) {
+			setRounds(prev => prev.filter(round => round.id !== id))
+		}
+	}
+
+	// Функция для обновления обхода
+	const updateRound = (id: string, field: keyof Round, value: string) => {
+		setRounds(prevRounds =>
+			prevRounds.map(round =>
+				round.id === id ? { ...round, [field]: value } : round
+			)
+		)
+	}
 
 	// Загрузка данных из localStorage при монтировании компонента
 	useEffect(() => {
@@ -81,22 +116,49 @@ export default function ExcelProcessor() {
 				setDistrict(parsedData.district || "")
 				setOssNumber(parsedData.ossNumber || "")
 				setOssDate(parsedData.ossDate || "")
-				setRound1Type(parsedData.round1Type || "date")
-				setRound1Status(parsedData.round1Status || "cancelled")
-				setRound1Date(parsedData.round1Date || "")
-				setRound1StartTime(parsedData.round1StartTime || "18:00")
-				setRound1EndTime(parsedData.round1EndTime || "20:30")
-				setUseRound2(parsedData.useRound2 || false)
-				setRound2Type(parsedData.round2Type || "date")
-				setRound2Status(parsedData.round2Status || "cancelled")
-				setRound2Date(parsedData.round2Date || "")
-				setRound2StartTime(parsedData.round2StartTime || "18:00")
-				setRound2EndTime(parsedData.round2EndTime || "20:30")
+				// Загружаем обходы или используем значения по умолчанию
+				if (parsedData.rounds && Array.isArray(parsedData.rounds)) {
+					setRounds(parsedData.rounds)
+				}
 			} catch (error) {
 				console.error("Ошибка при загрузке данных из localStorage:", error)
 			}
 		}
+
+		// Загружаем корзину из localStorage
+		const savedCart = localStorage.getItem("excelProcessorCart")
+		if (savedCart) {
+			try {
+				const parsedCart = JSON.parse(savedCart)
+				if (Array.isArray(parsedCart)) {
+					// Загружаем корзину без файлов (файлы будут добавлены пользователем)
+					setCart(parsedCart)
+				}
+			} catch (error) {
+				console.error("Ошибка при загрузке корзины из localStorage:", error)
+			}
+		}
+
 		setIsLoaded(true)
+
+		// Слушаем событие для очистки файлов при переходе на другую вкладку
+		const handleTabChange = () => {
+			// Очищаем файлы из корзины при переходе на другую вкладку
+			setCart(prev => prev.map(item => ({ ...item, file: null })))
+		}
+
+		// Слушаем событие для проверки наличия файлов
+		const handleCheckCartFiles = () => {
+			const hasFiles = cart.some(item => item.file !== null)
+			window.dispatchEvent(new CustomEvent('cartFilesStatus', { detail: { hasFiles } }))
+		}
+
+		window.addEventListener("clearCartFiles", handleTabChange)
+		window.addEventListener("checkCartFiles", handleCheckCartFiles)
+		return () => {
+			window.removeEventListener("clearCartFiles", handleTabChange)
+			window.removeEventListener("checkCartFiles", handleCheckCartFiles)
+		}
 	}, [])
 
 	// Сохранение данных в localStorage при изменении (только после загрузки)
@@ -108,36 +170,40 @@ export default function ExcelProcessor() {
 			district,
 			ossNumber,
 			ossDate,
-			round1Type,
-			round1Status,
-			round1Date,
-			round1StartTime,
-			round1EndTime,
-			useRound2,
-			round2Type,
-			round2Status,
-			round2Date,
-			round2StartTime,
-			round2EndTime,
+			rounds,
 		}
 		localStorage.setItem("excelProcessorData", JSON.stringify(dataToSave))
-	}, [address, district, ossNumber, ossDate, round1Type, round1Status, round1Date, round1StartTime, round1EndTime, useRound2, round2Type, round2Status, round2Date, round2StartTime, round2EndTime, isLoaded])
+	}, [address, district, ossNumber, ossDate, rounds, isLoaded])
+
+	// Сохранение корзины в localStorage при изменении
+	useEffect(() => {
+		if (!isLoaded) return
+
+		// Сохраняем корзину без файлов (файлы не сериализуются в JSON)
+		const cartToSave = cart.map(item => ({
+			...item,
+			file: null // Не сохраняем файлы в localStorage
+		}))
+		localStorage.setItem("excelProcessorCart", JSON.stringify(cartToSave))
+
+		// Также сохраняем информацию о наличии файлов для проверки предупреждений
+		const hasFiles = cart.some(item => item.file !== null)
+		localStorage.setItem("excelProcessorHasFiles", JSON.stringify(hasFiles))
+	}, [cart, isLoaded])
 
 	// Функции для работы с корзиной
 	const addToCart = () => {
-		if (!file || !address || !district || !ossNumber || !ossDate) {
-			setError("Пожалуйста, заполните все обязательные поля и выберите файл")
+		if (!address || !district || !ossNumber || !ossDate) {
+			setError("Пожалуйста, заполните все обязательные поля")
 			return
 		}
 
-		if (round1Type === "date" && !round1Date) {
-			setError("Пожалуйста, укажите дату первого обхода или выберите статус")
-			return
-		}
-
-		if (useRound2 && round2Type === "date" && !round2Date) {
-			setError("Пожалуйста, укажите дату второго обхода или выберите статус")
-			return
+		// Проверяем, что все обходы заполнены корректно
+		for (const round of rounds) {
+			if (round.type === "date" && !round.date) {
+				setError("Пожалуйста, укажите дату для всех обходов или выберите статус")
+				return
+			}
 		}
 
 		const newItem: CartItem = {
@@ -146,18 +212,8 @@ export default function ExcelProcessor() {
 			district,
 			ossNumber,
 			ossDate,
-			file,
-			round1Type,
-			round1Status,
-			round1Date,
-			round1StartTime,
-			round1EndTime,
-			useRound2,
-			round2Type,
-			round2Status,
-			round2Date,
-			round2StartTime,
-			round2EndTime,
+			file: file || null, // Файл может быть null
+			rounds: [...rounds] // Копируем массив обходов
 		}
 
 		setCart(prev => [...prev, newItem])
@@ -170,12 +226,80 @@ export default function ExcelProcessor() {
 		})
 	}
 
+	// Функция для обновления элемента корзины
+	const updateCartItem = (id: string, field: keyof CartItem, value: any) => {
+		setCart(prev => prev.map(item =>
+			item.id === id ? { ...item, [field]: value } : item
+		))
+	}
+
+	// Функции для работы с обходами в корзине
+	const addRoundToCartItem = (cartItemId: string) => {
+		const newRound: Round = {
+			id: Date.now().toString(),
+			type: "date",
+			status: "cancelled",
+			date: "",
+			startTime: "18:00",
+			endTime: "20:30"
+		}
+
+		setCart(prev => prev.map(item =>
+			item.id === cartItemId
+				? { ...item, rounds: [...item.rounds, newRound] }
+				: item
+		))
+	}
+
+	const removeRoundFromCartItem = (cartItemId: string, roundId: string) => {
+		setCart(prev => prev.map(item =>
+			item.id === cartItemId
+				? { ...item, rounds: item.rounds.filter(round => round.id !== roundId) }
+				: item
+		))
+	}
+
+	const updateCartItemRound = (cartItemId: string, roundId: string, field: keyof Round, value: string) => {
+		setCart(prev => prev.map(item =>
+			item.id === cartItemId
+				? {
+					...item,
+					rounds: item.rounds.map(round =>
+						round.id === roundId ? { ...round, [field]: value } : round
+					)
+				}
+				: item
+		))
+	}
+
+	// Функции для режима редактирования
+	const toggleEditMode = (itemId: string) => {
+		setEditingItems(prev => {
+			const newSet = new Set(prev)
+			if (newSet.has(itemId)) {
+				newSet.delete(itemId)
+			} else {
+				newSet.add(itemId)
+			}
+			return newSet
+		})
+	}
+
+	const exitEditMode = (itemId: string) => {
+		setEditingItems(prev => {
+			const newSet = new Set(prev)
+			newSet.delete(itemId)
+			return newSet
+		})
+	}
+
 	const removeFromCart = (id: string) => {
 		setCart(prev => prev.filter(item => item.id !== id))
 	}
 
 	const clearCart = () => {
 		setCart([])
+		localStorage.removeItem("excelProcessorCart")
 	}
 
 	const resetCurrentForm = () => {
@@ -184,22 +308,21 @@ export default function ExcelProcessor() {
 		setDistrict("")
 		setOssNumber("")
 		setOssDate("")
-		setRound1Type("date")
-		setRound1Status("cancelled")
-		setRound1Date("")
-		setRound1StartTime("18:00")
-		setRound1EndTime("20:30")
-		setUseRound2(false)
-		setRound2Type("date")
-		setRound2Status("cancelled")
-		setRound2Date("")
-		setRound2StartTime("18:00")
-		setRound2EndTime("20:30")
+		setRounds([
+			{
+				id: "1",
+				type: "date",
+				status: "cancelled",
+				date: "",
+				startTime: "18:00",
+				endTime: "20:30"
+			}
+		])
 	}
 
 	const resetForm = () => {
 		resetCurrentForm()
-		setCart([])
+		clearCart()
 		setError(null)
 		localStorage.removeItem("excelProcessorData")
 	}
@@ -227,36 +350,24 @@ export default function ExcelProcessor() {
 	const formatRoundDates = () => {
 		let result = ""
 
-		if (round1Type === "date") {
-			if (round1Date) {
-				const date = new Date(round1Date)
-				const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`
-				result = `${formattedDate} (${round1StartTime}-${round1EndTime})`
-			}
-		} else {
-			result = round1Status === "cancelled" ? "Обход отменен" : "Обхода нет"
-		}
-
-		if (useRound2) {
-			if (round2Type === "date") {
-				if (round2Date) {
-					const date2 = new Date(round2Date)
-					const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1).toString().padStart(2, "0")}.${date2.getFullYear()}`
-					result += result
-						? `\n${formattedDate2} (${round2StartTime}-${round2EndTime})`
-						: `${formattedDate2} (${round2StartTime}-${round2EndTime})`
+		for (const round of rounds) {
+			if (round.type === "date") {
+				if (round.date) {
+					const date = new Date(round.date)
+					const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`
+					result += `${formattedDate} (${round.startTime}-${round.endTime})`
 				}
 			} else {
-				const statusText = round2Status === "cancelled" ? "Обход отменен" : "Обхода нет"
-				result += result ? `\n${statusText}` : statusText
+				result += round.status === "cancelled" ? "Обход отменен" : "Обхода нет"
 			}
+			result += "\n"
 		}
 
-		return result
+		return result.trim()
 	}
 
 	// Обработчик для вставки в поле даты ОСС
-	const handleOssDatePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+	const handleOssDatePaste = (e: React.ClipboardEvent<HTMLInputElement>, cartItemId?: string) => {
 		e.preventDefault()
 		const pastedText = e.clipboardData.getData("text")
 
@@ -270,10 +381,21 @@ export default function ExcelProcessor() {
 			const month = match[2]
 			const year = match[3]
 			const formattedDate = `${year}-${month}-${day}`
-			setOssDate(formattedDate)
+
+			if (cartItemId) {
+				// Обновляем дату в корзине
+				updateCartItem(cartItemId, "ossDate", formattedDate)
+			} else {
+				// Обновляем дату в основной форме
+				setOssDate(formattedDate)
+			}
 		} else {
 			// Если не соответствует, просто устанавливаем как есть
-			setOssDate(pastedText)
+			if (cartItemId) {
+				updateCartItem(cartItemId, "ossDate", pastedText)
+			} else {
+				setOssDate(pastedText)
+			}
 		}
 	}
 
@@ -303,38 +425,34 @@ export default function ExcelProcessor() {
 	const formatRoundDatesForItem = (item: CartItem) => {
 		let result = ""
 
-		if (item.round1Type === "date") {
-			if (item.round1Date) {
-				const date = new Date(item.round1Date)
-				const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`
-				result = `${formattedDate} (${item.round1StartTime}-${item.round1EndTime})`
-			}
-		} else {
-			result = item.round1Status === "cancelled" ? "Обход отменен" : "Обхода нет"
-		}
-
-		if (item.useRound2) {
-			if (item.round2Type === "date") {
-				if (item.round2Date) {
-					const date2 = new Date(item.round2Date)
-					const formattedDate2 = `${date2.getDate().toString().padStart(2, "0")}.${(date2.getMonth() + 1).toString().padStart(2, "0")}.${date2.getFullYear()}`
-					result += result
-						? `\n${formattedDate2} (${item.round2StartTime}-${item.round2EndTime})`
-						: `${formattedDate2} (${item.round2StartTime}-${item.round2EndTime})`
+		for (const round of item.rounds) {
+			if (round.type === "date") {
+				if (round.date) {
+					const date = new Date(round.date)
+					const formattedDate = `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`
+					result += `${formattedDate} (${round.startTime}-${round.endTime})`
 				}
 			} else {
-				const statusText = item.round2Status === "cancelled" ? "Обход отменен" : "Обхода нет"
-				result += result ? `\n${statusText}` : statusText
+				result += round.status === "cancelled" ? "Обход отменен" : "Обхода нет"
 			}
+			result += "\n"
 		}
 
-		return result
+		return result.trim()
 	}
 
 	// Обработка всей корзины
 	const processCart = async () => {
 		if (cart.length === 0) {
 			setError("Корзина пуста. Добавьте файлы для обработки")
+			return
+		}
+
+		// Фильтруем только элементы с файлами
+		const itemsWithFiles = cart.filter(item => item.file !== null)
+
+		if (itemsWithFiles.length === 0) {
+			setError("В корзине нет файлов для обработки. Добавьте файлы к адресам.")
 			return
 		}
 
@@ -345,9 +463,9 @@ export default function ExcelProcessor() {
 			let allProcessedData: any[] = []
 			let isFirstFile = true
 
-			for (const item of cart) {
-				// Чтение файла
-				const data = await readFileAsync(item.file)
+			for (const item of itemsWithFiles) {
+				// Чтение файла (теперь item.file точно не null)
+				const data = await readFileAsync(item.file!)
 				const workbook = XLSX.read(data, { type: "array" })
 
 				// Получаем первый лист
@@ -465,8 +583,7 @@ export default function ExcelProcessor() {
 				description: `Файл с данными ${cart.length} адресов успешно обработан и скачан`,
 			})
 
-			// Очищаем корзину после успешной обработки
-			clearCart()
+			// Корзина НЕ очищается автоматически - только кнопкой сброса
 		} catch (err) {
 			console.error("Ошибка при обработке файлов:", err)
 			setError("Произошла ошибка при обработке файлов. Проверьте формат и структуру файлов.")
@@ -486,14 +603,12 @@ export default function ExcelProcessor() {
 			return
 		}
 
-		if (round1Type === "date" && !round1Date) {
-			setError("Пожалуйста, укажите дату первого обхода или выберите статус")
-			return
-		}
-
-		if (useRound2 && round2Type === "date" && !round2Date) {
-			setError("Пожалуйста, укажите дату второго обхода или выберите статус")
-			return
+		// Проверяем, что все обходы заполнены корректно
+		for (const round of rounds) {
+			if (round.type === "date" && !round.date) {
+				setError("Пожалуйста, укажите дату для всех обходов или выберите статус")
+				return
+			}
 		}
 
 		setProcessing(true)
@@ -658,15 +773,15 @@ export default function ExcelProcessor() {
 				<CardDescription>Загрузите Excel-файл и заполните данные для обработки</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-6">
-				<Tabs defaultValue="file" className="w-full">
+				<Tabs defaultValue="data" className="w-full">
 					{/* Обновим стиль TabsList в компоненте ExcelProcessor */}
 					<TabsList className="mb-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-1.5 rounded-lg shadow-sm">
-						<TabsTrigger value="file" className="rounded-md px-4 py-2 relative">
-							Загрузка файла
-							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
-						</TabsTrigger>
 						<TabsTrigger value="data" className="rounded-md px-4 py-2 relative">
 							Данные для обработки
+							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
+						</TabsTrigger>
+						<TabsTrigger value="file" className="rounded-md px-4 py-2 relative">
+							Загрузка файла
 							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
 						</TabsTrigger>
 						<TabsTrigger value="cart" className="rounded-md px-4 py-2 relative">
@@ -682,48 +797,6 @@ export default function ExcelProcessor() {
 							<div className="absolute bottom-0 left-0 right-0 h-1 bg-primary rounded-full scale-x-0 transition-transform duration-300 data-[state=active]:scale-x-100"></div>
 						</TabsTrigger>
 					</TabsList>
-
-					<TabsContent value="file" className="space-y-4 animate-fade-in">
-						<div className="space-y-2">
-							<Label htmlFor="excel-file">Выберите Excel-файл</Label>
-							<div className="flex items-center gap-2">
-								<Input
-									id="excel-file"
-									type="file"
-									accept=".xlsx,.xls"
-									onChange={handleFileChange}
-									disabled={processing}
-									className="flex-1 bg-white dark:bg-gray-800"
-								/>
-								<Button
-									variant="outline"
-									size="icon"
-									onClick={() => document.getElementById("excel-file")?.click()}
-									disabled={processing}
-									className="rounded-full"
-								>
-									<Upload className="h-4 w-4" />
-								</Button>
-							</div>
-							{file && (
-								<p className="text-sm text-muted-foreground flex items-center gap-2 p-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-md">
-									<FileSpreadsheet className="h-4 w-4 text-green-500" />
-									{file.name} ({(file.size / 1024).toFixed(1)} KB)
-								</p>
-							)}
-						</div>
-
-						<div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-4 rounded-md">
-							<h3 className="font-medium mb-2">Что делает обработчик:</h3>
-							<ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-								<li>Фильтрует строки по заданным условиям</li>
-								<li>Очищает и форматирует телефонные номера</li>
-								<li>Преобразует числовые значения</li>
-								<li>Реорганизует структуру таблицы</li>
-								<li>Создает новый Excel-файл с обработанными данными</li>
-							</ul>
-						</div>
-					</TabsContent>
 
 					<TabsContent value="data" className="space-y-4 animate-fade-in">
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -784,139 +857,75 @@ export default function ExcelProcessor() {
 						<div className="space-y-4">
 							<h3 className="font-medium">Даты обходов</h3>
 
-							<div className="border p-4 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-								<h4 className="text-sm font-medium mb-3">Первый обход *</h4>
-
-								<RadioGroup value={round1Type} onValueChange={setRound1Type} className="mb-4">
-									<div className="flex items-center space-x-2">
-										<RadioGroupItem value="date" id="round1-date" />
-										<Label htmlFor="round1-date">Указать дату и время</Label>
+							{rounds.map((round, index) => (
+								<div key={round.id} className="border p-4 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+									<div className="flex items-center justify-between mb-3">
+										<h4 className="text-sm font-medium">{getOrdinalNumber(index)} обход {index === 0 ? "*" : ""}</h4>
+										{rounds.length > 1 && (
+											<Button
+												onClick={() => removeRound(round.id)}
+												variant="outline"
+												size="sm"
+												className="text-red-600 hover:text-red-700"
+											>
+												<Trash2 className="h-4 w-4" />
+												Удалить
+											</Button>
+										)}
 									</div>
-									<div className="flex items-center space-x-2">
-										<RadioGroupItem value="status" id="round1-status" />
-										<Label htmlFor="round1-status">Указать статус</Label>
-									</div>
-								</RadioGroup>
 
-								{round1Type === "date" ? (
-									<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-										<div className="space-y-2">
-											<Label htmlFor="round1Date">Дата</Label>
-											<Input
-												id="round1Date"
-												type="date"
-												value={round1Date}
-												onChange={(e) => setRound1Date(e.target.value)}
-												onPaste={(e) => handleDatePaste(e, setRound1Date)}
-												className="bg-white dark:bg-gray-800"
-											/>
-										</div>
-
-										<div className="space-y-2">
-											<Label htmlFor="round1StartTime">Время начала</Label>
-											<Input
-												id="round1StartTime"
-												type="time"
-												value={round1StartTime}
-												onChange={(e) => setRound1StartTime(e.target.value)}
-												className="bg-white dark:bg-gray-800"
-											/>
-										</div>
-
-										<div className="space-y-2">
-											<Label htmlFor="round1EndTime">Время окончания</Label>
-											<Input
-												id="round1EndTime"
-												type="time"
-												value={round1EndTime}
-												onChange={(e) => setRound1EndTime(e.target.value)}
-												className="bg-white dark:bg-gray-800"
-											/>
-										</div>
-									</div>
-								) : (
-									<div className="space-y-2">
-										<Label htmlFor="round1Status">Статус</Label>
-										<Select value={round1Status} onValueChange={setRound1Status}>
-											<SelectTrigger id="round1Status" className="bg-white dark:bg-gray-800">
-												<SelectValue placeholder="Выберите статус" />
-											</SelectTrigger>
-											<SelectContent>
-												<SelectItem value="cancelled">Обход отменен</SelectItem>
-												<SelectItem value="none">Обхода нет</SelectItem>
-											</SelectContent>
-										</Select>
-									</div>
-								)}
-							</div>
-
-							<div className="flex items-center space-x-2">
-								<input
-									type="checkbox"
-									id="useRound2"
-									checked={useRound2}
-									onChange={(e) => setUseRound2(e.target.checked)}
-									className="rounded border-gray-300"
-								/>
-								<Label htmlFor="useRound2">Добавить второй обход</Label>
-							</div>
-
-							{useRound2 && (
-								<div className="border p-4 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
-									<h4 className="text-sm font-medium mb-3">Второй обход</h4>
-
-									<RadioGroup value={round2Type} onValueChange={setRound2Type} className="mb-4">
+									<RadioGroup value={round.type} onValueChange={(value) => updateRound(round.id, "type", value)} className="mb-4">
 										<div className="flex items-center space-x-2">
-											<RadioGroupItem value="date" id="round2-date" />
-											<Label htmlFor="round2-date">Указать дату и время</Label>
+											<RadioGroupItem value="date" id={`round-${round.id}-date`} />
+											<Label htmlFor={`round-${round.id}-date`}>Указать дату и время</Label>
 										</div>
 										<div className="flex items-center space-x-2">
-											<RadioGroupItem value="status" id="round2-status" />
-											<Label htmlFor="round2-status">Указать статус</Label>
+											<RadioGroupItem value="status" id={`round-${round.id}-status`} />
+											<Label htmlFor={`round-${round.id}-status`}>Указать статус</Label>
 										</div>
 									</RadioGroup>
 
-									{round2Type === "date" ? (
+									{round.type === "date" ? (
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 											<div className="space-y-2">
-												<Label htmlFor="round2Date">Дата</Label>
+												<Label htmlFor={`round-${round.id}-date-input`}>Дата</Label>
 												<Input
-													id="round2Date"
+													id={`round-${round.id}-date-input`}
 													type="date"
-													value={round2Date}
-													onChange={(e) => setRound2Date(e.target.value)}
-													onPaste={(e) => handleDatePaste(e, setRound2Date)}
+													value={round.date}
+													onChange={(e) => updateRound(round.id, "date", e.target.value)}
+													onPaste={(e) => handleDatePaste(e, (value) => updateRound(round.id, "date", value))}
 													className="bg-white dark:bg-gray-800"
 												/>
 											</div>
 
 											<div className="space-y-2">
-												<Label htmlFor="round2StartTime">Время начала</Label>
+												<Label htmlFor={`round-${round.id}-start-time`}>Время начала</Label>
 												<Input
-													id="round2StartTime"
+													id={`round-${round.id}-start-time`}
 													type="time"
-													value={round2StartTime}
-													onChange={(e) => setRound2StartTime(e.target.value)}
+													value={round.startTime}
+													onChange={(e) => updateRound(round.id, "startTime", e.target.value)}
 													className="bg-white dark:bg-gray-800"
 												/>
 											</div>
 
 											<div className="space-y-2">
-												<Label htmlFor="round2EndTime">Время окончания</Label>
+												<Label htmlFor={`round-${round.id}-end-time`}>Время окончания</Label>
 												<Input
-													id="round2EndTime"
+													id={`round-${round.id}-end-time`}
 													type="time"
-													value={round2EndTime}
-													onChange={(e) => setRound2EndTime(e.target.value)}
+													value={round.endTime}
+													onChange={(e) => updateRound(round.id, "endTime", e.target.value)}
 													className="bg-white dark:bg-gray-800"
 												/>
 											</div>
 										</div>
 									) : (
 										<div className="space-y-2">
-											<Label htmlFor="round2Status">Статус</Label>
-											<Select value={round2Status} onValueChange={setRound2Status}>
-												<SelectTrigger id="round2Status" className="bg-white dark:bg-gray-800">
+											<Label htmlFor={`round-${round.id}-status-select`}>Статус</Label>
+											<Select value={round.status} onValueChange={(value) => updateRound(round.id, "status", value)}>
+												<SelectTrigger id={`round-${round.id}-status-select`} className="bg-white dark:bg-gray-800">
 													<SelectValue placeholder="Выберите статус" />
 												</SelectTrigger>
 												<SelectContent>
@@ -927,7 +936,17 @@ export default function ExcelProcessor() {
 										</div>
 									)}
 								</div>
-							)}
+							))}
+
+							<Button
+								onClick={addRound}
+								variant="outline"
+								size="sm"
+								className="w-full"
+							>
+								<Plus className="h-4 w-4 mr-2" />
+								Добавить обход
+							</Button>
 
 							<div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-3 rounded-md text-sm text-muted-foreground">
 								<p>
@@ -944,9 +963,58 @@ export default function ExcelProcessor() {
 						</div>
 					</TabsContent>
 
+					<TabsContent value="file" className="space-y-4 animate-fade-in">
+						<div className="space-y-2">
+							<Label htmlFor="excel-file">Выберите Excel-файл</Label>
+							<div className="flex items-center gap-2">
+								<Input
+									id="excel-file"
+									type="file"
+									accept=".xlsx,.xls"
+									onChange={handleFileChange}
+									disabled={processing}
+									className="flex-1 bg-white dark:bg-gray-800"
+								/>
+								<Button
+									variant="outline"
+									size="icon"
+									onClick={() => document.getElementById("excel-file")?.click()}
+									disabled={processing}
+									className="rounded-full"
+								>
+									<Upload className="h-4 w-4" />
+								</Button>
+							</div>
+							{file && (
+								<p className="text-sm text-muted-foreground flex items-center gap-2 p-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-md">
+									<FileSpreadsheet className="h-4 w-4 text-green-500" />
+									{file.name} ({(file.size / 1024).toFixed(1)} KB)
+								</p>
+							)}
+						</div>
+
+						<div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-4 rounded-md">
+							<h3 className="font-medium mb-2">Что делает обработчик:</h3>
+							<ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
+								<li>Фильтрует строки по заданным условиям</li>
+								<li>Очищает и форматирует телефонные номера</li>
+								<li>Преобразует числовые значения</li>
+								<li>Реорганизует структуру таблицы</li>
+								<li>Создает новый Excel-файл с обработанными данными</li>
+							</ul>
+						</div>
+					</TabsContent>
+
 					<TabsContent value="cart" className="space-y-4 animate-fade-in">
 						<div className="flex items-center justify-between">
-							<h3 className="font-medium">Файлы в корзине ({cart.length})</h3>
+							<h3 className="font-medium">
+								Адреса в корзине ({cart.length})
+								{cart.filter(item => item.file !== null).length > 0 && (
+									<span className="text-sm text-muted-foreground ml-2">
+										• {cart.filter(item => item.file !== null).length} с файлами
+									</span>
+								)}
+							</h3>
 							{cart.length > 0 && (
 								<Button onClick={clearCart} variant="outline" size="sm">
 									<Trash2 className="h-4 w-4 mr-2" />
@@ -959,7 +1027,7 @@ export default function ExcelProcessor() {
 							<div className="text-center py-8 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-md">
 								<ShoppingCart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
 								<p className="text-muted-foreground">Корзина пуста</p>
-								<p className="text-sm text-muted-foreground">Добавьте файлы через вкладки "Загрузка файла" и "Данные для обработки"</p>
+								<p className="text-sm text-muted-foreground">Добавьте файлы через вкладки "Данные для обработки" и "Загрузка файла"</p>
 							</div>
 						) : (
 							<div className="space-y-3">
@@ -967,51 +1035,334 @@ export default function ExcelProcessor() {
 									<div key={item.id} className="border p-4 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
 										<div className="flex items-start justify-between">
 											<div className="flex-1">
-												<div className="flex items-center gap-2 mb-2">
-													<Badge variant="outline">#{index + 1}</Badge>
-													<h4 className="font-medium">{item.address}</h4>
-												</div>
-												<div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-muted-foreground">
+												{editingItems.has(item.id) ? (
+													// Режим редактирования
 													<div>
-														<span className="font-medium">Округ:</span> {item.district}
+														<div className="flex items-center gap-2 mb-3">
+															<Badge variant="outline">#{index + 1}</Badge>
+															<span className="font-medium">Редактирование адреса</span>
+														</div>
+														<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+															<div className="space-y-3">
+																<div className="space-y-1">
+																	<Label htmlFor={`address-${item.id}`} className="text-sm font-medium">Адрес</Label>
+																	<Input
+																		id={`address-${item.id}`}
+																		value={item.address}
+																		onChange={(e) => updateCartItem(item.id, "address", e.target.value)}
+																		placeholder="Введите адрес"
+																		className="text-sm"
+																	/>
+																</div>
+																<div className="space-y-1">
+																	<Label htmlFor={`district-${item.id}`} className="text-sm font-medium">Район</Label>
+																	<Select value={item.district} onValueChange={(value) => updateCartItem(item.id, "district", value)}>
+																		<SelectTrigger id={`district-${item.id}`} className="text-sm">
+																			<SelectValue placeholder="Выберите район" />
+																		</SelectTrigger>
+																		<SelectContent>
+																			{DISTRICTS.map(district => (
+																				<SelectItem key={district} value={district}>{district}</SelectItem>
+																			))}
+																		</SelectContent>
+																	</Select>
+																</div>
+																<div className="space-y-1">
+																	<Label htmlFor={`ossNumber-${item.id}`} className="text-sm font-medium">Номер ОСС</Label>
+																	<Input
+																		id={`ossNumber-${item.id}`}
+																		value={item.ossNumber}
+																		onChange={(e) => updateCartItem(item.id, "ossNumber", e.target.value)}
+																		placeholder="Введите номер ОСС"
+																		className="text-sm"
+																	/>
+																</div>
+																<div className="space-y-1">
+																	<Label htmlFor={`ossDate-${item.id}`} className="text-sm font-medium">Дата завершения ОСС</Label>
+																	<Input
+																		id={`ossDate-${item.id}`}
+																		type="date"
+																		value={item.ossDate}
+																		onChange={(e) => updateCartItem(item.id, "ossDate", e.target.value)}
+																		className="text-sm"
+																	/>
+																</div>
+																<div className="flex items-center gap-2">
+																	<span className="font-medium text-sm">Файл:</span>
+																	{item.file ? (
+																		<div className="flex items-center gap-2">
+																			<div className="flex items-center gap-1">
+																				<div className="w-2 h-2 rounded-full bg-green-500"></div>
+																				<span className="text-sm text-green-700 dark:text-green-400">{item.file.name}</span>
+																			</div>
+																		</div>
+																	) : (
+																		<span className="text-muted-foreground italic text-sm">Не выбран</span>
+																	)}
+																</div>
+															</div>
+															<div>
+																<div className="flex items-center justify-between mb-2">
+																	<div className="font-medium text-sm">Обходы ({item.rounds.length})</div>
+																	<Button
+																		onClick={() => addRoundToCartItem(item.id)}
+																		variant="outline"
+																		size="sm"
+																		className="text-xs"
+																	>
+																		<Plus className="h-3 w-3 mr-1" />
+																		Добавить
+																	</Button>
+																</div>
+																<div className="space-y-2">
+																	{item.rounds.map((round, roundIndex) => (
+																		<div key={round.id} className="border rounded-lg p-2 bg-gray-50 dark:bg-gray-800">
+																			<div className="flex items-center justify-between mb-2">
+																				<span className="font-medium text-xs">{getOrdinalNumber(roundIndex)} обход</span>
+																				{item.rounds.length > 1 && (
+																					<Button
+																						onClick={() => removeRoundFromCartItem(item.id, round.id)}
+																						variant="outline"
+																						size="sm"
+																						className="text-xs text-red-600 hover:text-red-700 h-6 w-6 p-0"
+																					>
+																						<X className="h-3 w-3" />
+																					</Button>
+																				)}
+																			</div>
+																			<div className="space-y-2">
+																				<RadioGroup
+																					value={round.type}
+																					onValueChange={(value) => updateCartItemRound(item.id, round.id, "type", value)}
+																					className="flex gap-3"
+																				>
+																					<div className="flex items-center space-x-1">
+																						<RadioGroupItem value="date" id={`date-${item.id}-${round.id}`} />
+																						<Label htmlFor={`date-${item.id}-${round.id}`} className="text-xs">Дата</Label>
+																					</div>
+																					<div className="flex items-center space-x-1">
+																						<RadioGroupItem value="status" id={`status-${item.id}-${round.id}`} />
+																						<Label htmlFor={`status-${item.id}-${round.id}`} className="text-xs">Статус</Label>
+																					</div>
+																				</RadioGroup>
+
+																				{round.type === "date" ? (
+																					<div className="grid grid-cols-3 gap-1">
+																						<div>
+																							<Label htmlFor={`round-date-${item.id}-${round.id}`} className="text-xs">Дата</Label>
+																							<Input
+																								id={`round-date-${item.id}-${round.id}`}
+																								type="date"
+																								value={round.date}
+																								onChange={(e) => updateCartItemRound(item.id, round.id, "date", e.target.value)}
+																								className="text-xs h-8"
+																							/>
+																						</div>
+																						<div>
+																							<Label htmlFor={`round-start-${item.id}-${round.id}`} className="text-xs">Начало</Label>
+																							<Input
+																								id={`round-start-${item.id}-${round.id}`}
+																								type="time"
+																								value={round.startTime}
+																								onChange={(e) => updateCartItemRound(item.id, round.id, "startTime", e.target.value)}
+																								className="text-xs h-8"
+																							/>
+																						</div>
+																						<div>
+																							<Label htmlFor={`round-end-${item.id}-${round.id}`} className="text-xs">Окончание</Label>
+																							<Input
+																								id={`round-end-${item.id}-${round.id}`}
+																								type="time"
+																								value={round.endTime}
+																								onChange={(e) => updateCartItemRound(item.id, round.id, "endTime", e.target.value)}
+																								className="text-xs h-8"
+																							/>
+																						</div>
+																					</div>
+																				) : (
+																					<div>
+																						<Label htmlFor={`round-status-${item.id}-${round.id}`} className="text-xs">Статус</Label>
+																						<Select value={round.status} onValueChange={(value) => updateCartItemRound(item.id, round.id, "status", value)}>
+																							<SelectTrigger id={`round-status-${item.id}-${round.id}`} className="text-xs h-8">
+																								<SelectValue />
+																							</SelectTrigger>
+																							<SelectContent>
+																								<SelectItem value="cancelled">Отменен</SelectItem>
+																								<SelectItem value="none">Не проводится</SelectItem>
+																							</SelectContent>
+																						</Select>
+																					</div>
+																				)}
+																			</div>
+																		</div>
+																	))}
+																</div>
+															</div>
+														</div>
 													</div>
+												) : (
+													// Режим просмотра
 													<div>
-														<span className="font-medium">ОСС:</span> {item.ossNumber}
+														<div className="flex items-center gap-2 mb-2">
+															<Badge variant="outline">#{index + 1}</Badge>
+															<h4 className="font-medium text-lg">{item.address}</h4>
+															{item.file && (
+																<div className="flex items-center gap-1 ml-2">
+																	<div className="w-2 h-2 rounded-full bg-green-500"></div>
+																	<span className="text-xs text-green-700 dark:text-green-400 font-medium">Файл загружен</span>
+																</div>
+															)}
+														</div>
+														<div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-muted-foreground">
+															<div>
+																<span className="font-medium">Округ:</span> {item.district}
+															</div>
+															<div>
+																<span className="font-medium">ОСС:</span> {item.ossNumber}
+															</div>
+															<div>
+																<span className="font-medium">Дата завершения:</span> {item.ossDate}
+															</div>
+															<div className="flex items-center gap-2">
+																<span className="font-medium">Файл:</span>
+																{item.file ? (
+																	<div className="flex items-center gap-2">
+																		<div className="flex items-center gap-1">
+																			<div className="w-2 h-2 rounded-full bg-green-500"></div>
+																			<span className="text-green-700 dark:text-green-400 font-medium">{item.file.name}</span>
+																		</div>
+																	</div>
+																) : (
+																	<span className="text-muted-foreground italic">Не выбран</span>
+																)}
+															</div>
+														</div>
+														<div className="mt-2 text-sm">
+															<span className="font-medium">Обходы:</span>
+															<div className="whitespace-pre-line text-muted-foreground">
+																{formatRoundDatesForItem(item)}
+															</div>
+														</div>
 													</div>
-													<div>
-														<span className="font-medium">Дата:</span> {item.ossDate}
-													</div>
-													<div>
-														<span className="font-medium">Файл:</span> {item.file.name}
-													</div>
-												</div>
-												<div className="mt-2 text-sm">
-													<span className="font-medium">Обходы:</span>
-													<div className="whitespace-pre-line text-muted-foreground">
-														{formatRoundDatesForItem(item)}
-													</div>
-												</div>
+												)}
 											</div>
-											<Button
-												onClick={() => removeFromCart(item.id)}
-												variant="outline"
-												size="sm"
-												className="ml-4"
-											>
-												<Trash2 className="h-4 w-4" />
-											</Button>
+											<div className="flex gap-2 ml-4">
+												{editingItems.has(item.id) ? (
+													// Кнопки в режиме редактирования
+													<>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => exitEditMode(item.id)}
+															className="text-green-600 hover:text-green-700"
+															title="Сохранить изменения"
+														>
+															✓
+														</Button>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => exitEditMode(item.id)}
+															className="text-gray-600 hover:text-gray-700"
+															title="Отменить изменения"
+														>
+															✕
+														</Button>
+													</>
+												) : (
+													// Кнопки в режиме просмотра
+													<>
+														{!item.file ? (
+															<div>
+																<input
+																	type="file"
+																	accept=".xlsx,.xls"
+																	id={`file-upload-${item.id}`}
+																	className="hidden"
+																	onChange={(e) => {
+																		if (e.target.files && e.target.files[0]) {
+																			const newFile = e.target.files[0]
+																			setCart(prev => prev.map(cartItem =>
+																				cartItem.id === item.id
+																					? { ...cartItem, file: newFile }
+																					: cartItem
+																			))
+																			toast({
+																				title: "Файл добавлен",
+																				description: `Файл для адреса "${item.address}" добавлен`,
+																			})
+																		}
+																	}}
+																/>
+																<Button
+																	variant="outline"
+																	size="sm"
+																	onClick={() => document.getElementById(`file-upload-${item.id}`)?.click()}
+																	className="text-blue-600 hover:text-blue-700"
+																	title="Выбрать файл"
+																>
+																	<Upload className="h-4 w-4" />
+																</Button>
+															</div>
+														) : (
+															<Button
+																variant="outline"
+																size="sm"
+																onClick={() => {
+																	setCart(prev => prev.map(cartItem =>
+																		cartItem.id === item.id
+																			? { ...cartItem, file: null }
+																			: cartItem
+																	))
+																	toast({
+																		title: "Файл удален",
+																		description: `Файл для адреса "${item.address}" удален`,
+																	})
+																}}
+																className="text-red-600 hover:text-red-700"
+																title="Удалить файл"
+															>
+																<X className="h-4 w-4" />
+															</Button>
+														)}
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => toggleEditMode(item.id)}
+															className="text-blue-600 hover:text-blue-700"
+															title="Редактировать"
+														>
+															✏️
+														</Button>
+														<Button
+															onClick={() => removeFromCart(item.id)}
+															variant="outline"
+															size="sm"
+															className="text-red-600 hover:text-red-700"
+															title="Удалить из корзины"
+														>
+															<Trash2 className="h-4 w-4" />
+														</Button>
+													</>
+												)}
+											</div>
 										</div>
 									</div>
 								))}
 
 								<div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm p-4 rounded-md">
-									<h4 className="font-medium mb-2">Что произойдет при обработке:</h4>
+									<h4 className="font-medium mb-2">Как работает корзина:</h4>
 									<ul className="list-disc list-inside text-sm space-y-1 text-muted-foreground">
-										<li>Все файлы будут обработаны с их индивидуальными настройками</li>
-										<li>Данные объединятся в один файл Excel</li>
-										<li>Заголовки таблицы добавятся только один раз (в начале)</li>
-										<li>Корзина автоматически очистится после успешной обработки</li>
+										<li>Адреса сохраняются между вкладками</li>
+										<li>Файлы добавляются прямо в корзине перед обработкой</li>
+										<li>При обработке данные объединятся в один Excel файл</li>
+										<li>Корзина очищается только кнопкой "Очистить корзину"</li>
 									</ul>
+									{cart.some(item => item.file !== null) && (
+										<div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-yellow-800 dark:text-yellow-200 text-xs">
+											⚠️ При переходе на другие вкладки загруженные файлы будут сброшены
+										</div>
+									)}
 								</div>
 							</div>
 						)}
@@ -1034,22 +1385,27 @@ export default function ExcelProcessor() {
 					<Button
 						onClick={addToCart}
 						variant="outline"
-						disabled={!file || processing}
+						disabled={processing}
 						className="flex items-center gap-2"
 					>
 						<Plus className="h-4 w-4" />
 						Добавить в корзину
 					</Button>
-					<Button onClick={processExcel} disabled={!file || processing} variant="secondary">
+					<Button
+						onClick={processExcel}
+						disabled={!file || processing}
+						className={file ? "gradient-bg border-0 text-white" : ""}
+						variant={file ? "default" : "secondary"}
+					>
 						{processing ? "Обработка..." : "Обработать один файл"}
 					</Button>
 					<Button
 						onClick={processCart}
-						disabled={cart.length === 0 || processing}
+						disabled={cart.filter(item => item.file !== null).length === 0 || processing}
 						className="gradient-bg border-0 flex items-center gap-2"
 					>
 						<Download className="h-4 w-4" />
-						{processing ? "Обработка..." : `Обработать корзину (${cart.length})`}
+						{processing ? "Обработка..." : `Обработать корзину (${cart.filter(item => item.file !== null).length})`}
 					</Button>
 				</div>
 			</CardFooter>
