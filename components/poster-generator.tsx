@@ -93,6 +93,7 @@ export default function PosterGenerator() {
 					setShowPhone(parsedData.showPhone);
 				}
 
+
 				// Проверяем флаг автоматической генерации и очищаем его
 				if (parsedData.autoGenerate) {
 					// Очищаем флаг автоматической генерации
@@ -647,6 +648,7 @@ export default function PosterGenerator() {
 												/>
 											</div>
 										)}
+
 									</div>
 
 									{/* Кнопки экспорта */}
