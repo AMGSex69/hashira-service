@@ -342,7 +342,7 @@ export default function MoscowPoster({ dates, phone, showPhone }: TextContentPro
 				{/* Информация о ГКУ НТУ */}
 				<div className="absolute w-[450px] left-[72.65px] top-[778px] text-center">
 					<p className="text-[8px] leading-[10px] text-gray-600">
-						ГКУ «Новые технологии управления», ИНН 7701765530, Тел.: 8-499-652-52-11, E-mail: help@ed.mos.ru
+						ГКУ «Новые технологии управления», ИНН 7701765530, Тел.: 8-499-652-62-11, E-mail: help@ed.mos.ru
 						<br />
 						ГКУ НТУ является координатором проекта «Электронный дом» в соответствии с постановлением Правительства Москвы от 27.12.2022 №3036-ПП
 					</p>
