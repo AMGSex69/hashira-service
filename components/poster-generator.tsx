@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import MoscowPoster from "./MoscowPoster";
+import MeetingPoster from "./MeetingPoster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { RotateCcw, X, Download, FileText, Plus } from "lucide-react";
 import { Clock, Calendar } from "lucide-react";
 import html2canvas from 'html2canvas';
@@ -21,7 +23,10 @@ interface DateInfo {
 	timeEnd: string;
 }
 
+type PosterType = 'rounds' | 'meetings';
+
 export default function PosterGenerator() {
+	const [posterType, setPosterType] = useState<PosterType>('rounds');
 	const [dates, setDates] = useState<DateInfo[]>([
 		{
 			id: 1,
@@ -35,12 +40,47 @@ export default function PosterGenerator() {
 	const [showPhone, setShowPhone] = useState(true);
 	const [isLoaded, setIsLoaded] = useState(false);
 
+	// Новые поля для плаката встреч
+	const [meetingType, setMeetingType] = useState<'registration' | 'oss'>('registration');
+	const [meetingLocation, setMeetingLocation] = useState('');
+	const [agenda, setAgenda] = useState('');
+
+	// Обработчик изменения типа плаката
+	const handlePosterTypeChange = (newType: PosterType) => {
+		setPosterType(newType);
+
+		// Если переключаемся на плакат встреч и у нас больше одной даты, оставляем только первую
+		if (newType !== 'rounds' && dates.length > 1) {
+			const firstDate = dates[0];
+			setDates([firstDate]);
+		}
+
+		// Если переключаемся на плакат обходов и у нас только одна пустая дата, добавляем еще одну
+		if (newType === 'rounds' && dates.length === 1 && !dates[0].date && !dates[0].timeStart) {
+			setDates([
+				dates[0],
+				{
+					id: 2,
+					date: '',
+					isoDate: '',
+					timeStart: '',
+					timeEnd: ''
+				}
+			]);
+		}
+	};
+
 	// Загрузка сохраненного состояния при монтировании компонента
 	useEffect(() => {
 		const savedData = localStorage.getItem('posterGeneratorData');
 		if (savedData) {
 			try {
 				const parsedData = JSON.parse(savedData);
+
+				// Загружаем тип плаката
+				if (parsedData.posterType) {
+					setPosterType(parsedData.posterType);
+				}
 
 				// Проверяем, в каком формате сохранены данные
 				if (parsedData.dates) {
@@ -93,6 +133,16 @@ export default function PosterGenerator() {
 					setShowPhone(parsedData.showPhone);
 				}
 
+				// Загружаем новые поля для встреч
+				if (parsedData.meetingType) {
+					setMeetingType(parsedData.meetingType);
+				}
+				if (parsedData.meetingLocation) {
+					setMeetingLocation(parsedData.meetingLocation);
+				}
+				if (parsedData.agenda) {
+					setAgenda(parsedData.agenda);
+				}
 
 				// Проверяем флаг автоматической генерации и очищаем его
 				if (parsedData.autoGenerate) {
@@ -127,17 +177,22 @@ export default function PosterGenerator() {
 		// Убеждаемся, что dates это массив перед сохранением
 		const safeDatesForSave = Array.isArray(dates) ? dates : [];
 		const dataToSave = {
+			posterType,
 			dates: safeDatesForSave,
 			phone,
-			showPhone
+			showPhone,
+			meetingType,
+			meetingLocation,
+			agenda
 		};
 		localStorage.setItem('posterGeneratorData', JSON.stringify(dataToSave));
-	}, [dates, phone, showPhone, isLoaded]);
+	}, [dates, phone, showPhone, posterType, meetingType, meetingLocation, agenda, isLoaded]);
 
 	// Добавить новую дату
 	const addDate = () => {
 		const currentDates = Array.isArray(dates) ? dates : [];
-		if (currentDates.length >= 4) return; // Максимум 4 даты
+		const maxDates = posterType === 'rounds' ? 4 : 1; // Для встреч максимум 1 дата
+		if (currentDates.length >= maxDates) return;
 		const newId = currentDates.length > 0 ? Math.max(...currentDates.map(d => d.id)) + 1 : 1;
 		setDates(prev => {
 			const prevArray = Array.isArray(prev) ? prev : [];
@@ -317,6 +372,9 @@ export default function PosterGenerator() {
 		]);
 		setPhone('8 (499) 652-62-11');
 		setShowPhone(true);
+		setMeetingType('registration');
+		setMeetingLocation('');
+		setAgenda('');
 		// Очищаем сохраненные данные
 		localStorage.removeItem('posterGeneratorData');
 	};
@@ -394,7 +452,8 @@ export default function PosterGenerator() {
 			const y = (pageHeight - imgHeight) / 2;
 
 			pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
-			pdf.save('плакат-москва.pdf');
+			const fileName = posterType === 'rounds' ? 'плакат-обходы.pdf' : 'плакат-встречи.pdf';
+			pdf.save(fileName);
 		} catch (error) {
 			console.error('Ошибка при создании PDF:', error);
 			alert('Произошла ошибка при создании PDF файла');
@@ -455,7 +514,8 @@ export default function PosterGenerator() {
 
 			// Скачиваем файл
 			const link = document.createElement('a');
-			link.download = 'плакат-москва.png';
+			const fileName = posterType === 'rounds' ? 'плакат-обходы.png' : 'плакат-встречи.png';
+			link.download = fileName;
 			link.href = canvas.toDataURL('image/png');
 			document.body.appendChild(link);
 			link.click();
@@ -474,6 +534,9 @@ export default function PosterGenerator() {
 	};
 
 	const getDayName = (index: number): string => {
+		if (posterType === 'meetings') {
+			return 'Дата встречи';
+		}
 		const dayNames = ['Первый день', 'Второй день', 'Третий день', 'Четвертый день'];
 		return dayNames[index] || `${index + 1}-й день`;
 	};
@@ -510,6 +573,61 @@ export default function PosterGenerator() {
 									</div>
 								</CardHeader>
 								<CardContent className="space-y-6">
+									{/* Выбор типа плаката */}
+									<div>
+										<Label>Тип плаката</Label>
+										<Select value={posterType} onValueChange={(value: PosterType) => handlePosterTypeChange(value)}>
+											<SelectTrigger>
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="rounds">Для обходов</SelectItem>
+												<SelectItem value="meetings">Для встреч</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+
+									{/* Дополнительные поля для встреч */}
+									{posterType === 'meetings' && (
+										<div className="space-y-4">
+											<div>
+												<Label>Тип встречи</Label>
+												<Select value={meetingType} onValueChange={(value: 'registration' | 'oss') => setMeetingType(value)}>
+													<SelectTrigger>
+														<SelectValue />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="registration">По вопросу регистрации на платформе</SelectItem>
+														<SelectItem value="oss">По вопросу проведения ОСС</SelectItem>
+													</SelectContent>
+												</Select>
+											</div>
+
+											{meetingType === 'oss' && (
+												<div>
+													<Label htmlFor="agenda">Повестка собрания</Label>
+													<Textarea
+														id="agenda"
+														value={agenda}
+														onChange={(e) => setAgenda(e.target.value)}
+														placeholder="Например: установка умного видеодомофона"
+														rows={3}
+													/>
+												</div>
+											)}
+
+											<div>
+												<Label htmlFor="meetingLocation">Место встречи</Label>
+												<Input
+													id="meetingLocation"
+													value={meetingLocation}
+													onChange={(e) => setMeetingLocation(e.target.value)}
+													placeholder="Например: Кронштадтский бульвар, дом 24, корпус 3"
+												/>
+											</div>
+										</div>
+									)}
+
 									{/* Динамический список дат */}
 									{safeDates.map((dateItem, index) => (
 										<div key={dateItem.id} className="space-y-4 border-b pb-4 last:border-b-0">
@@ -607,7 +725,7 @@ export default function PosterGenerator() {
 									))}
 
 									{/* Кнопка добавить дату */}
-									{safeDates.length < 4 && (
+									{safeDates.length < (posterType === 'rounds' ? 4 : 1) && (
 										<Button
 											onClick={addDate}
 											variant="outline"
@@ -619,9 +737,9 @@ export default function PosterGenerator() {
 									)}
 
 									{/* Предупреждение о лимите */}
-									{safeDates.length >= 4 && (
+									{safeDates.length >= (posterType === 'rounds' ? 4 : 1) && (
 										<div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
-											<strong>Внимание:</strong> Максимум 4 даты. Больше не поместится на плакате.
+											<strong>Внимание:</strong> {posterType === 'rounds' ? 'Максимум 4 даты. Больше не поместится на плакате.' : 'Для встреч используется только одна дата.'}
 										</div>
 									)}
 
@@ -680,7 +798,18 @@ export default function PosterGenerator() {
 										{/* Принудительная светлая тема для плаката */}
 										<div className="light">
 											<div id="moscow-poster" className="moscow-poster-container">
-												<MoscowPoster dates={safeDates} phone={phone} showPhone={showPhone} />
+												{posterType === 'rounds' ? (
+													<MoscowPoster dates={safeDates} phone={phone} showPhone={showPhone} />
+												) : (
+													<MeetingPoster
+														dates={safeDates}
+														phone={phone}
+														showPhone={showPhone}
+														meetingType={meetingType}
+														meetingLocation={meetingLocation}
+														agenda={agenda}
+													/>
+												)}
 											</div>
 										</div>
 									</div>
@@ -692,4 +821,4 @@ export default function PosterGenerator() {
 			</Card>
 		</div>
 	);
-} 
+}

@@ -943,6 +943,7 @@ export default function ScriptGenerator() {
 
 		// Создаем объект данных для генератора плакатов
 		const posterData = {
+			posterType: 'rounds', // Указываем тип плаката для обходов
 			dates: posterDates,
 			phone: '8 (499) 652-62-11',
 			showPhone: true,
